@@ -1,1 +1,3 @@
 /target
+libduckdb/*
+!libduckdb/.gitkeep

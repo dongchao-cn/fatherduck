@@ -365,10 +365,10 @@ pub async fn main() {
     let factory = Arc::new(DuckDBBackendFactory {
         handler: Arc::new(DuckDBBackend::new()),
     });
-    let server_addr = "0.0.0.0:5432";
+    let server_addr = "127.0.0.1:5432";
     let listener = TcpListener::bind(server_addr).await.unwrap();
     println!(
-        "Listening to {}, use password `pencil` to connect",
+        "Listening to {}, use password `pencil` to connect!",
         server_addr
     );
     loop {
