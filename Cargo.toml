@@ -4,3 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+pgwire = "0.28.0"
+duckdb = { version = "1.1.1", features = ["bundled"] }
+tokio = { version = "1.43.0", features = ["full"] }
+async-trait = "0.1.86"
+futures = "0.3.31"
