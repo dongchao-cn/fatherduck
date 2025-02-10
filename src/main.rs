@@ -1,4 +1,5 @@
 use std::sync::{Arc, Mutex};
+use std::panic;
 
 use async_trait::async_trait;
 use duckdb::arrow::datatypes::DataType;
@@ -16,11 +17,14 @@ use pgwire::api::results::{
     Response, Tag,
 };
 use pgwire::api::stmt::{NoopQueryParser, StoredStatement};
-use pgwire::api::{ClientInfo, NoopErrorHandler, PgWireServerHandlers, Type};
+use pgwire::api::{ClientInfo, ErrorHandler, PgWireServerHandlers, Type};
 use pgwire::error::{ErrorInfo, PgWireError, PgWireResult};
 use pgwire::messages::data::DataRow;
 use pgwire::tokio::process_socket;
 use tokio::net::TcpListener;
+
+mod error;
+use error::UnknownError;
 
 pub struct DuckDBBackend {
     conn: Arc<Mutex<Connection>>,
@@ -54,25 +58,33 @@ impl SimpleQueryHandler for DuckDBBackend {
         C: ClientInfo + Unpin + Send + Sync,
     {
         let conn = self.conn.lock().unwrap();
-        if query.to_uppercase().starts_with("SELECT") {
-            let mut stmt = conn
-                .prepare(query)
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-            let header = Arc::new(row_desc_from_stmt(&stmt, &Format::UnifiedText)?);
-            stmt.query(params![])
-                .map(|rows| {
-                    let s = encode_row_data(rows, header.clone());
-                    vec![Response::Query(QueryResponse::new(header, s))]
-                })
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))
-        } else {
-            conn.execute(query, params![])
-                .map(|affected_rows| {
-                    vec![Response::Execution(
-                        Tag::new("OK").with_rows(affected_rows).into(),
-                    )]
-                })
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))
+        let result = panic::catch_unwind(|| {
+            if query.to_uppercase().starts_with("SELECT") {
+                let mut stmt = conn
+                    .prepare(query)
+                    .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+                let header = Arc::new(row_desc_from_stmt(&stmt, &Format::UnifiedText)?);
+                stmt.query(params![])
+                    .map(|rows| {
+                        let s = encode_row_data(rows, header.clone());
+                        vec![Response::Query(QueryResponse::new(header, s))]
+                    })
+                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
+            } else {
+                conn.execute(query, params![])
+                    .map(|affected_rows| {
+                        vec![Response::Execution(
+                            Tag::new("OK").with_rows(affected_rows).into(),
+                        )]
+                    })
+                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
+            }
+        });
+        match result {
+            Ok(res) => res,
+            Err(_) => Err(PgWireError::ApiError(Box::new(
+            UnknownError::UnknownError("Server thread panicked".to_owned()),
+            ))),
         }
     }
 }
@@ -315,6 +327,15 @@ impl ExtendedQueryHandler for DuckDBBackend {
     }
 }
 
+impl ErrorHandler for DuckDBBackend {
+    fn on_error<C>(&self, _client: &C, _error: &mut PgWireError)
+    where
+        C: ClientInfo,
+    {
+        println!("on_error: {:?}", _error);
+    }
+}
+
 impl DuckDBBackend {
     fn new() -> DuckDBBackend {
         DuckDBBackend {
@@ -334,7 +355,7 @@ impl PgWireServerHandlers for DuckDBBackendFactory {
     type SimpleQueryHandler = DuckDBBackend;
     type ExtendedQueryHandler = DuckDBBackend;
     type CopyHandler = NoopCopyHandler;
-    type ErrorHandler = NoopErrorHandler;
+    type ErrorHandler = DuckDBBackend;
 
     fn simple_query_handler(&self) -> Arc<Self::SimpleQueryHandler> {
         self.handler.clone()
@@ -356,7 +377,7 @@ impl PgWireServerHandlers for DuckDBBackendFactory {
     }
 
     fn error_handler(&self) -> Arc<Self::ErrorHandler> {
-        Arc::new(NoopErrorHandler)
+        self.handler.clone()
     }
 }
 
