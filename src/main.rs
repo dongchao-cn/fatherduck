@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use duckdb::arrow::datatypes::DataType;
 use duckdb::Rows;
 use duckdb::{params, types::ValueRef, Connection, Statement, ToSql};
+
 use futures::stream;
 use futures::Stream;
 use pgwire::api::auth::md5pass::{hash_md5_password, Md5PasswordAuthStartupHandler};
@@ -59,31 +60,30 @@ impl SimpleQueryHandler for DuckDBBackend {
     {
         let conn = self.conn.lock().unwrap();
         let result = panic::catch_unwind(|| {
-            if query.to_uppercase().starts_with("SELECT") {
-                let mut stmt = conn
-                    .prepare(query)
-                    .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-                let header = Arc::new(row_desc_from_stmt(&stmt, &Format::UnifiedText)?);
-                stmt.query(params![])
-                    .map(|rows| {
-                        let s = encode_row_data(rows, header.clone());
-                        vec![Response::Query(QueryResponse::new(header, s))]
-                    })
-                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
-            } else {
-                conn.execute(query, params![])
-                    .map(|affected_rows| {
-                        vec![Response::Execution(
-                            Tag::new("OK").with_rows(affected_rows).into(),
-                        )]
-                    })
-                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
-            }
+            println!("query: {}", query);
+            let mut stmt = conn
+                .prepare(query)
+                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+            let header: Option<Arc<Vec<FieldInfo>>> = None;
+            stmt.query(params![])
+                .map(|rows| {
+                    let header = match header {
+                        Some(v) => v,
+                        None => {
+                            println!("get row_desc_from_stmt!");
+                            Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap())
+                        }
+                    };
+                    // let header: Arc<Vec<FieldInfo>> = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap());
+                    let s = encode_row_data(rows, header.clone());
+                    vec![Response::Query(QueryResponse::new(header, s))]
+                })
+                .map_err(|e| PgWireError::ApiError(Box::new(e)))
         });
         match result {
             Ok(res) => res,
             Err(_) => Err(PgWireError::ApiError(Box::new(
-            UnknownError::UnknownError("Server thread panicked".to_owned()),
+                UnknownError::UnknownError("Server thread panicked".to_owned()),
             ))),
         }
     }
@@ -191,6 +191,9 @@ fn encode_row_data(
                 }
                 ValueRef::Blob(b) => {
                     encoder.encode_field(&b).unwrap();
+                }
+                ValueRef::Date32(d) => {
+                    encoder.encode_field(&d).unwrap();
                 }
                 _ => {
                     unimplemented!("More types to be supported.")
@@ -397,5 +400,32 @@ pub async fn main() {
         let factory_ref = factory.clone();
 
         tokio::spawn(async move { process_socket(incoming_socket.0, None, factory_ref).await });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_stmt_1() {
+        let conn = Connection::open_in_memory().unwrap();
+        let mut stmt = conn.prepare("SELECT 1,2,3").unwrap();
+        let mut rows = stmt.query([]);
+
+        // let mut rows = stmt.raw_query();
+        // while let Some(row) = rows.next().unwrap() {
+        //     let id: i32 = row.get(0).unwrap();
+        //     println!("row get: {}", id);
+        // }
+        for row in rows {
+            let header = row_desc_from_stmt(row.as_ref().unwrap(), &Format::UnifiedText);
+            
+            println!("{:?}", 1);
+        }
+        let header = row_desc_from_stmt(&stmt, &Format::UnifiedText);
+        let d = stmt.column_count();
+        println!("{:?}", stmt.schema().fields());
+
     }
 }
