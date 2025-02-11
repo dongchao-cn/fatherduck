@@ -28,3 +28,12 @@ VALUES ('San Francisco', 43, 57, 0.0, '1994-11-29');
 select * from weather;
 
 SELECT * FROM generate_series(5);
+
+-- 准备参数化查询
+PREPARE my_query AS SELECT * FROM weather WHERE temp_lo = ?;
+
+-- 执行查询并传递参数
+EXECUTE my_query(46);
+
+-- 释放资源
+DEALLOCATE my_query;

@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::panic;
 
 use async_trait::async_trait;
+use derive_new::new;
 use duckdb::arrow::datatypes::DataType;
 use duckdb::Rows;
 use duckdb::{params, types::ValueRef, Connection, Statement, ToSql};
@@ -17,7 +18,7 @@ use pgwire::api::results::{
     DataRowEncoder, DescribePortalResponse, DescribeStatementResponse, FieldInfo, QueryResponse,
     Response, Tag,
 };
-use pgwire::api::stmt::{NoopQueryParser, StoredStatement};
+use pgwire::api::stmt::{StoredStatement, QueryParser};
 use pgwire::api::{ClientInfo, ErrorHandler, PgWireServerHandlers, Type};
 use pgwire::error::{ErrorInfo, PgWireError, PgWireResult};
 use pgwire::messages::data::DataRow;
@@ -30,7 +31,7 @@ use error::UnknownError;
 
 pub struct DuckDBBackend {
     conn: Arc<Mutex<Connection>>,
-    query_parser: Arc<NoopQueryParser>,
+    query_parser: Arc<DuckDBQueryParser>,
 }
 
 struct DummyAuthSource;
@@ -162,6 +163,9 @@ fn encode_row_data(
             let data = row.get_ref_unwrap::<usize>(idx);
             match data {
                 ValueRef::Null => encoder.encode_field(&None::<i8>).unwrap(),
+                ValueRef::Boolean(b) => {
+                    encoder.encode_field(&b).unwrap();
+                }
                 ValueRef::TinyInt(i) => {
                     encoder.encode_field(&i).unwrap();
                 }
@@ -193,8 +197,8 @@ fn encode_row_data(
                         .encode_field(&(BASE_DATE + Duration::days(d as i64)).format("%Y-%m-%d").to_string())
                         .unwrap();
                 }
-                _ => {
-                    unimplemented!("More types to be supported.")
+                other => {
+                    unimplemented!("type {:?} not supported.", other)
                 }
             }
         }
@@ -248,10 +252,28 @@ fn get_params(portal: &Portal<String>) -> Vec<Box<dyn ToSql>> {
     results
 }
 
+
+fn rewrite_query(sql: &str) -> String {
+    sql.replace("'pg_namespace'::regclass", "(SELECT oid FROM pg_class WHERE relname = 'pg_namespace')")
+}
+
+#[derive(new, Debug, Default)]
+pub struct DuckDBQueryParser;
+
+#[async_trait]
+impl QueryParser for DuckDBQueryParser {
+    type Statement = String;
+
+    async fn parse_sql(&self, sql: &str, _types: &[Type]) -> PgWireResult<Self::Statement> {
+        let new_sql = rewrite_query(sql);
+        Ok(new_sql.to_owned())
+    }
+}
+
 #[async_trait]
 impl ExtendedQueryHandler for DuckDBBackend {
     type Statement = String;
-    type QueryParser = NoopQueryParser;
+    type QueryParser = DuckDBQueryParser;
 
     fn query_parser(&self) -> Arc<Self::QueryParser> {
         self.query_parser.clone()
@@ -267,30 +289,39 @@ impl ExtendedQueryHandler for DuckDBBackend {
         C: ClientInfo + Unpin + Send + Sync,
     {
         let conn = self.conn.lock().unwrap();
-        let query = &portal.statement.statement;
-        let mut stmt = conn
-            .prepare_cached(query)
-            .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-        let params = get_params(portal);
-        let params_ref = params
-            .iter()
-            .map(|f| f.as_ref())
-            .collect::<Vec<&dyn duckdb::ToSql>>();
+        let result = panic::catch_unwind(|| {
 
-        if query.to_uppercase().starts_with("SELECT") {
-            let header = Arc::new(row_desc_from_stmt(&stmt, &portal.result_column_format)?);
-            stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
-                .map(|rows| {
-                    let s = encode_row_data(rows, header.clone());
-                    Response::Query(QueryResponse::new(header, s))
-                })
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))
-        } else {
-            stmt.execute::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
-                .map(|affected_rows| {
-                    Response::Execution(Tag::new("OK").with_rows(affected_rows).into())
-                })
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))
+            let query = &portal.statement.statement;
+            let mut stmt = conn
+                .prepare_cached(query)
+                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+            let params = get_params(portal);
+            let params_ref = params
+                .iter()
+                .map(|f| f.as_ref())
+                .collect::<Vec<&dyn duckdb::ToSql>>();
+
+            if true | query.to_uppercase().starts_with("SELECT") {
+                stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
+                    .map(|rows| {
+                        let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &portal.result_column_format).unwrap());
+                        let s = encode_row_data(rows, header.clone());
+                        Response::Query(QueryResponse::new(header, s))
+                    })
+                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
+            } else {
+                stmt.execute::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
+                    .map(|affected_rows| {
+                        Response::Execution(Tag::new("OK").with_rows(affected_rows).into())
+                    })
+                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
+            }
+        });
+        match result {
+            Ok(res) => res,
+            Err(_) => Err(PgWireError::ApiError(Box::new(
+                UnknownError::UnknownError("Server thread panicked".to_owned()),
+            ))),
         }
     }
 
@@ -304,9 +335,10 @@ impl ExtendedQueryHandler for DuckDBBackend {
     {
         let conn = self.conn.lock().unwrap();
         let param_types = stmt.parameter_types.clone();
-        let stmt = conn
+        let mut stmt = conn
             .prepare_cached(&stmt.statement)
             .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+        let _ = stmt.execute([]);
         row_desc_from_stmt(&stmt, &Format::UnifiedBinary)
             .map(|fields| DescribeStatementResponse::new(param_types, fields))
     }
@@ -319,13 +351,37 @@ impl ExtendedQueryHandler for DuckDBBackend {
     where
         C: ClientInfo + Unpin + Send + Sync,
     {
+
         let conn = self.conn.lock().unwrap();
-        let mut stmt = conn
-            .prepare_cached(&portal.statement.statement)
-            .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-        let _ =stmt.execute([]);
-        row_desc_from_stmt(&stmt, &portal.result_column_format)
-            .map(|fields| DescribePortalResponse::new(fields))
+        let result = panic::catch_unwind(|| {
+            let query = &portal.statement.statement;
+            println!("do_describe_portal query: {}", query);
+            let mut stmt = conn
+                .prepare_cached(query)
+                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+            let params = get_params(portal);
+            let params_ref = params
+                .iter()
+                .map(|f| f.as_ref())
+                .collect::<Vec<&dyn duckdb::ToSql>>();
+            params_ref.iter().for_each(|f| {
+                println!("do_describe_portal params_ref: {:?}", f.to_sql());
+            });
+
+            stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
+                .map(|rows| {
+                    let header = row_desc_from_stmt(rows.as_ref().unwrap(), &portal.result_column_format);
+                    header.map(|fields| DescribePortalResponse::new(fields))
+                })
+                .map_err(|e| PgWireError::ApiError(Box::new(e)))
+                .unwrap()
+        });
+        match result {
+            Ok(res) => res,
+            Err(_) => Err(PgWireError::ApiError(Box::new(
+                UnknownError::UnknownError("Server thread panicked".to_owned()),
+            ))),
+        }
     }
 }
 
@@ -342,7 +398,7 @@ impl DuckDBBackend {
     fn new() -> DuckDBBackend {
         DuckDBBackend {
             conn: Arc::new(Mutex::new(Connection::open_in_memory().unwrap())),
-            query_parser: Arc::new(NoopQueryParser::new()),
+            query_parser: Arc::new(DuckDBQueryParser::new()),
         }
     }
 }
