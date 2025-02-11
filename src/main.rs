@@ -64,19 +64,12 @@ impl SimpleQueryHandler for DuckDBBackend {
             let mut stmt = conn
                 .prepare(query)
                 .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-            let header: Option<Arc<Vec<FieldInfo>>> = None;
             stmt.query(params![])
                 .map(|rows| {
-                    let header = match header {
-                        Some(v) => v,
-                        None => {
-                            println!("get row_desc_from_stmt!");
-                            Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap())
-                        }
-                    };
-                    // let header: Arc<Vec<FieldInfo>> = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap());
+                    // println!("get row_desc_from_stmt!");
+                    let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap());
                     let s = encode_row_data(rows, header.clone());
-                    vec![Response::Query(QueryResponse::new(header, s))]
+                    vec![Response::Query(QueryResponse::new(header.clone(), s))]
                 })
                 .map_err(|e| PgWireError::ApiError(Box::new(e)))
         });
