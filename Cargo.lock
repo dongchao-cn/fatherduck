@@ -660,6 +660,7 @@ name = "fatherduck"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "chrono",
  "duckdb",
  "futures",
  "pgwire",

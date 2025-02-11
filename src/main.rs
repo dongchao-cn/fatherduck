@@ -23,6 +23,7 @@ use pgwire::error::{ErrorInfo, PgWireError, PgWireResult};
 use pgwire::messages::data::DataRow;
 use pgwire::tokio::process_socket;
 use tokio::net::TcpListener;
+use chrono::{NaiveDate, Duration};
 
 mod error;
 use error::UnknownError;
@@ -147,6 +148,8 @@ fn row_desc_from_stmt(stmt: &Statement, format: &Format) -> PgWireResult<Vec<Fie
         .collect()
 }
 
+const BASE_DATE: NaiveDate = NaiveDate::from_ymd_opt(1970, 1, 1).unwrap();
+
 fn encode_row_data(
     mut rows: Rows<'_>,
     schema: Arc<Vec<FieldInfo>>,
@@ -186,7 +189,9 @@ fn encode_row_data(
                     encoder.encode_field(&b).unwrap();
                 }
                 ValueRef::Date32(d) => {
-                    encoder.encode_field(&d).unwrap();
+                    encoder
+                        .encode_field(&(BASE_DATE + Duration::days(d as i64)).format("%Y-%m-%d").to_string())
+                        .unwrap();
                 }
                 _ => {
                     unimplemented!("More types to be supported.")
@@ -315,9 +320,10 @@ impl ExtendedQueryHandler for DuckDBBackend {
         C: ClientInfo + Unpin + Send + Sync,
     {
         let conn = self.conn.lock().unwrap();
-        let stmt = conn
+        let mut stmt = conn
             .prepare_cached(&portal.statement.statement)
             .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+        let _ =stmt.execute([]);
         row_desc_from_stmt(&stmt, &portal.result_column_format)
             .map(|fields| DescribePortalResponse::new(fields))
     }
