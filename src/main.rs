@@ -23,6 +23,8 @@ use pgwire::api::{ClientInfo, ErrorHandler, PgWireServerHandlers, Type};
 use pgwire::error::{ErrorInfo, PgWireError, PgWireResult};
 use pgwire::messages::data::DataRow;
 use pgwire::tokio::process_socket;
+use regex::Regex;
+use lazy_static::lazy_static;
 use tokio::net::TcpListener;
 use chrono::{NaiveDate, Duration};
 
@@ -252,9 +254,24 @@ fn get_params(portal: &Portal<String>) -> Vec<Box<dyn ToSql>> {
     results
 }
 
+lazy_static! {
+    // 定义不可变的替换规则
+    static ref QUERY_REPLACEMENTS: Vec<(Regex, &'static str)> = vec![
+        (Regex::new(r"'(\w+)'::regclass").unwrap(), r"(SELECT oid FROM pg_class WHERE relname = '$1')"),
+        (Regex::new(r"SHOW TRANSACTION ISOLATION LEVEL").unwrap(), r"SELECT 'read committed' AS transaction_isolation"),
+        (Regex::new(r"SHOW (\w+)").unwrap(), r"SELECT current_setting('$1') AS $1;"),
+        (Regex::new(r"SET (\w+) = (.*)").unwrap(), r"SET $1 = '$2'"),
+    ];
+}
 
 fn rewrite_query(sql: &str) -> String {
-    sql.replace("'pg_namespace'::regclass", "(SELECT oid FROM pg_class WHERE relname = 'pg_namespace')")
+    let result = QUERY_REPLACEMENTS.iter().fold(sql.to_string(), |acc, (re, replacement)| {
+        re.replace_all(&acc, *replacement).to_string()
+    });
+    if sql != result {
+        println!("rewrite_query:\nbefore:\n{}\nafter:\n{}", sql, result);
+    }
+    result
 }
 
 #[derive(new, Debug, Default)]
@@ -468,11 +485,6 @@ mod tests {
         let mut stmt = conn.prepare("SELECT 1,2,3").unwrap();
         let mut rows = stmt.query([]);
 
-        // let mut rows = stmt.raw_query();
-        // while let Some(row) = rows.next().unwrap() {
-        //     let id: i32 = row.get(0).unwrap();
-        //     println!("row get: {}", id);
-        // }
         for row in rows {
             let header = row_desc_from_stmt(row.as_ref().unwrap(), &Format::UnifiedText);
             
@@ -482,5 +494,19 @@ mod tests {
         let d = stmt.column_count();
         println!("{:?}", stmt.schema().fields());
 
+    }
+
+    #[test]
+    fn test_rewrite_regclass() {
+        let sql = "pg_namespace'::regclass";
+        let new_sql = rewrite_query(sql);
+        assert_eq!(new_sql, "(SELECT oid FROM pg_class WHERE relname = 'pg_namespace')");
+    }
+    
+    #[test]
+    fn test_rewrite_show() {
+        let sql = "SHOW search_path";
+        let new_sql = rewrite_query(sql);
+        assert_eq!(new_sql, "SELECT current_setting('search_path') AS search_path;");
     }
 }

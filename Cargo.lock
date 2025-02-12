@@ -664,7 +664,9 @@ dependencies = [
  "derive-new",
  "duckdb",
  "futures",
+ "lazy_static",
  "pgwire",
+ "regex",
  "thiserror",
  "tokio",
 ]
