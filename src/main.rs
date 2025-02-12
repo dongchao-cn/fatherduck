@@ -15,8 +15,7 @@ use pgwire::api::copy::NoopCopyHandler;
 use pgwire::api::portal::{Format, Portal};
 use pgwire::api::query::{ExtendedQueryHandler, SimpleQueryHandler};
 use pgwire::api::results::{
-    DataRowEncoder, DescribePortalResponse, DescribeStatementResponse, FieldInfo, QueryResponse,
-    Response, Tag,
+    DataRowEncoder, DescribePortalResponse, DescribeStatementResponse, FieldFormat, FieldInfo, QueryResponse, Response, Tag
 };
 use pgwire::api::stmt::{StoredStatement, QueryParser};
 use pgwire::api::{ClientInfo, ErrorHandler, PgWireServerHandlers, Type};
@@ -257,15 +256,17 @@ fn get_params(portal: &Portal<String>) -> Vec<Box<dyn ToSql>> {
 lazy_static! {
     // 定义不可变的替换规则
     static ref QUERY_REPLACEMENTS: Vec<(Regex, &'static str)> = vec![
-        (Regex::new(r"'(\w+)'::regclass").unwrap(), r"(SELECT oid FROM pg_class WHERE relname = '$1')"),
-        (Regex::new(r"SHOW TRANSACTION ISOLATION LEVEL").unwrap(), r"SELECT 'read committed' AS transaction_isolation"),
-        (Regex::new(r"SHOW (\w+)").unwrap(), r"SELECT current_setting('$1') AS $1;"),
-        (Regex::new(r"SET (\w+) = (.*)").unwrap(), r"SET $1 = '$2'"),
+        (Regex::new(r"(?i)'(\w+)'::regclass").unwrap(), r"(SELECT oid FROM pg_class WHERE relname = '$1')"),
+        (Regex::new(r"(?i)SHOW TRANSACTION ISOLATION LEVEL").unwrap(), r"SELECT 'read committed' AS transaction_isolation"),
+        (Regex::new(r"(?i)SHOW TABLES").unwrap(), r"SELECT table_name as name FROM information_schema.tables WHERE table_schema = current_schema()"),
+        (Regex::new(r"(?i)SHOW (\w+)").unwrap(), r"SELECT current_setting('$1') AS $1"),
+        (Regex::new(r"(?i)SET (\w+) = (.*)").unwrap(), r"SET $1 = '$2'"),
     ];
 }
 
 fn rewrite_query(sql: &str) -> String {
-    let result = QUERY_REPLACEMENTS.iter().fold(sql.to_string(), |acc, (re, replacement)| {
+    let trim_sql = sql.trim();
+    let result = QUERY_REPLACEMENTS.iter().fold(trim_sql.to_string(), |acc, (re, replacement)| {
         re.replace_all(&acc, *replacement).to_string()
     });
     if sql != result {
@@ -285,6 +286,45 @@ impl QueryParser for DuckDBQueryParser {
         let new_sql = rewrite_query(sql);
         Ok(new_sql.to_owned())
     }
+}
+
+fn into_arrow_type(df_type: &str) -> PgWireResult<DataType> {
+    Ok(match df_type {
+        "BIGINT" => DataType::Int64,
+        "BLOB" => DataType::Binary,
+        "BOOLEAN" => DataType::Boolean,
+        "DATE" => DataType::Date32,
+        "DOUBLE" => DataType::Float64,
+        "FLOAT" => DataType::Float32,
+        "INTEGER" => DataType::Int32,
+        "SMALLINT" => DataType::Int16,
+        "TINYINT" => DataType::Int8,
+        "VARCHAR" => DataType::Utf8,
+        _ => {
+            return Err(PgWireError::UserError(Box::new(ErrorInfo::new(
+                "ERROR".to_owned(),
+                "XX000".to_owned(),
+                format!("Unsupported Datatype {df_type}"),
+            ))));
+        }
+    })
+}
+
+fn get_field_infos_from_describe(rows: &mut Rows) -> PgWireResult<Vec<FieldInfo>> {
+    let mut result: Vec<FieldInfo> = Vec::new();
+    while let Ok(Some(row)) = rows.next() {
+        let column_name: String = row.get_unwrap(0);
+        let column_type: String = row.get_unwrap(1);
+        let field = FieldInfo::new(
+            column_name,
+            None,
+            None,
+            into_pg_type(&into_arrow_type(&column_type).unwrap()).unwrap(),
+            FieldFormat::Text
+        );
+        result.push(field);
+    }
+    Ok(result)
 }
 
 #[async_trait]
@@ -309,6 +349,7 @@ impl ExtendedQueryHandler for DuckDBBackend {
         let result = panic::catch_unwind(|| {
 
             let query = &portal.statement.statement;
+            println!("ExtendedQueryHandler.do_query query: {}", query);
             let mut stmt = conn
                 .prepare_cached(query)
                 .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
@@ -350,14 +391,17 @@ impl ExtendedQueryHandler for DuckDBBackend {
     where
         C: ClientInfo + Unpin + Send + Sync,
     {
-        let conn = self.conn.lock().unwrap();
-        let param_types = stmt.parameter_types.clone();
-        let mut stmt = conn
-            .prepare_cached(&stmt.statement)
-            .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-        let _ = stmt.execute([]);
-        row_desc_from_stmt(&stmt, &Format::UnifiedBinary)
-            .map(|fields| DescribeStatementResponse::new(param_types, fields))
+        unimplemented!("do_describe_statement");
+        // let conn = self.conn.lock().unwrap();
+        // let param_types = stmt.parameter_types.clone();
+        // let query = &stmt.statement;
+        // println!("ExtendedQueryHandler.do_describe_statement query: {}", query);
+        // let mut stmt = conn
+        //     .prepare_cached(query)
+        //     .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+        // let _ = stmt.execute([]);
+        // row_desc_from_stmt(&stmt, &Format::UnifiedBinary)
+        //     .map(|fields| DescribeStatementResponse::new(param_types, fields))
     }
 
     async fn do_describe_portal<C>(
@@ -368,30 +412,36 @@ impl ExtendedQueryHandler for DuckDBBackend {
     where
         C: ClientInfo + Unpin + Send + Sync,
     {
-
         let conn = self.conn.lock().unwrap();
         let result = panic::catch_unwind(|| {
             let query = &portal.statement.statement;
-            println!("do_describe_portal query: {}", query);
-            let mut stmt = conn
-                .prepare_cached(query)
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-            let params = get_params(portal);
-            let params_ref = params
-                .iter()
-                .map(|f| f.as_ref())
-                .collect::<Vec<&dyn duckdb::ToSql>>();
-            params_ref.iter().for_each(|f| {
-                println!("do_describe_portal params_ref: {:?}", f.to_sql());
-            });
+            println!("ExtendedQueryHandler.do_describe_portal query: {}", query);
+            if query.to_uppercase().starts_with("SELECT") {
+                let query = &("DESCRIBE ".to_string() + query);
+                let mut stmt = conn
+                    .prepare_cached(query)
+                    .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+                let params = get_params(portal);
+                let params_ref = params
+                    .iter()
+                    .map(|f| f.as_ref())
+                    .collect::<Vec<&dyn duckdb::ToSql>>();
+                params_ref.iter().for_each(|f| {
+                    println!("do_describe_portal params_ref: {:?}", f.to_sql());
+                });
 
-            stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
-                .map(|rows| {
-                    let header = row_desc_from_stmt(rows.as_ref().unwrap(), &portal.result_column_format);
-                    header.map(|fields| DescribePortalResponse::new(fields))
-                })
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))
-                .unwrap()
+                stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
+                    .map(|mut rows| {
+                        let header = get_field_infos_from_describe(&mut rows);
+                        header.map(|fields| DescribePortalResponse::new(fields))
+                    })
+                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
+                    .unwrap()
+            } else if query.to_uppercase().starts_with("INSERT") {
+                Ok(DescribePortalResponse::new(vec![FieldInfo::new("Count".to_owned(), None, None, Type::INT4, FieldFormat::Text)]))
+            } else {
+                Ok(DescribePortalResponse::new(vec![]))
+            }
         });
         match result {
             Ok(res) => res,
@@ -399,6 +449,7 @@ impl ExtendedQueryHandler for DuckDBBackend {
                 UnknownError::UnknownError("Server thread panicked".to_owned()),
             ))),
         }
+        // Ok(DescribePortalResponse::new(vec![]))
     }
 }
 
