@@ -1,3 +1,4 @@
 /target
 libduckdb/*
 !libduckdb/.gitkeep
+tarpaulin-report.html

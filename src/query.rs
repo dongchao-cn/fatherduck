@@ -5,14 +5,14 @@ use std::panic;
 use async_trait::async_trait;
 use duckdb::arrow::datatypes::DataType;
 use duckdb::Rows;
-use duckdb::{params, types::ValueRef, Connection, Statement, ToSql};
+use duckdb::{types::ValueRef, Connection, Statement, ToSql};
 
 use futures::stream;
 use futures::Stream;
 use pgwire::api::portal::{Format, Portal};
 use pgwire::api::query::{ExtendedQueryHandler, SimpleQueryHandler};
 use pgwire::api::results::{
-    DataRowEncoder, DescribePortalResponse, DescribeStatementResponse, FieldFormat, FieldInfo, QueryResponse, Response, Tag
+    DataRowEncoder, DescribePortalResponse, DescribeStatementResponse, FieldFormat, FieldInfo, QueryResponse, Response
 };
 use pgwire::api::stmt::StoredStatement;
 use pgwire::api::{ClientInfo, Type};
@@ -48,25 +48,12 @@ impl SimpleQueryHandler for FatherDuckQueryHandler {
         C: ClientInfo + Unpin + Send + Sync,
     {
         let conn = self.conn.lock().unwrap();
-        let result = panic::catch_unwind(|| {
-            println!("query: {}", query);
-            let mut stmt = conn
-                .prepare(query)
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-            stmt.query(params![])
-                .map(|rows| {
-                    // println!("get row_desc_from_stmt!");
-                    let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap());
-                    let s = encode_row_data(rows, header.clone());
-                    vec![Response::Query(QueryResponse::new(header.clone(), s))]
-                })
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))
-        });
-        match result {
-            Ok(res) => res,
-            Err(_) => Err(PgWireError::ApiError(Box::new(
-                UnknownError::UnknownError("Server thread panicked".to_owned()),
-            ))),
+        let res = query_duckdb(&conn, &query, &vec![]);
+        match res {
+            Ok(r) => Ok(vec!(r)),
+            Err(e) => {
+                Err(e)
+            }
         }
     }
 }
@@ -278,6 +265,25 @@ fn get_field_infos_from_describe(rows: &mut Rows) -> PgWireResult<Vec<FieldInfo>
     Ok(result)
 }
 
+
+fn query_duckdb<'a>(conn: &Connection, query: &str, params: &Vec<&dyn ToSql>) -> PgWireResult<Response<'a>> {
+    // let conn = conn.lock().unwrap();
+    println!("query: {}", query);
+    // panic!("sss");
+    let mut stmt = conn
+        .prepare(query)
+        .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+    stmt.query::<&[&dyn duckdb::ToSql]>(params)
+        .map(|rows| {
+            // println!("get row_desc_from_stmt!");
+            let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), 
+                &Format::UnifiedText).unwrap());
+            let s = encode_row_data(rows, header.clone());
+            Response::Query(QueryResponse::new(header.clone(), s))
+        })
+        .map_err(|e| PgWireError::ApiError(Box::new(e)))
+}
+
 #[async_trait]
 impl ExtendedQueryHandler for FatherDuckQueryHandler {
     type Statement = String;
@@ -297,41 +303,14 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
         C: ClientInfo + Unpin + Send + Sync,
     {
         let conn = self.conn.lock().unwrap();
-        let result = panic::catch_unwind(|| {
-
-            let query = &portal.statement.statement;
-            println!("ExtendedQueryHandler.do_query query: {}", query);
-            let mut stmt = conn
-                .prepare_cached(query)
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-            let params = get_params(portal);
-            let params_ref = params
-                .iter()
-                .map(|f| f.as_ref())
-                .collect::<Vec<&dyn duckdb::ToSql>>();
-
-            if true | query.to_uppercase().starts_with("SELECT") {
-                stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
-                    .map(|rows| {
-                        let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &portal.result_column_format).unwrap());
-                        let s = encode_row_data(rows, header.clone());
-                        Response::Query(QueryResponse::new(header, s))
-                    })
-                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
-            } else {
-                stmt.execute::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
-                    .map(|affected_rows| {
-                        Response::Execution(Tag::new("OK").with_rows(affected_rows).into())
-                    })
-                    .map_err(|e| PgWireError::ApiError(Box::new(e)))
-            }
-        });
-        match result {
-            Ok(res) => res,
-            Err(_) => Err(PgWireError::ApiError(Box::new(
-                UnknownError::UnknownError("Server thread panicked".to_owned()),
-            ))),
-        }
+        let query = &portal.statement.statement;
+        println!("ExtendedQueryHandler.do_query query: {}", query);
+        let params = get_params(portal);
+        let params_ref = params
+            .iter()
+            .map(|f| f.as_ref())
+            .collect::<Vec<&dyn duckdb::ToSql>>();
+        query_duckdb(&conn, &query, params_ref.as_ref())
     }
 
     async fn do_describe_statement<C>(
@@ -410,19 +389,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_stmt_1() {
+    fn test_query_duckdb() {
         let conn = Connection::open_in_memory().unwrap();
-        let mut stmt = conn.prepare("SELECT 1,2,3").unwrap();
-        let mut rows = stmt.query([]);
-
-        for row in rows {
-            let header = row_desc_from_stmt(row.as_ref().unwrap(), &Format::UnifiedText);
-            
-            println!("{:?}", 1);
-        }
-        let header = row_desc_from_stmt(&stmt, &Format::UnifiedText);
-        let d = stmt.column_count();
-        println!("{:?}", stmt.schema().fields());
-
+        let query = "SELECT 1,2,3";
+        let result = query_duckdb(&conn, query, &vec![]);
+        assert_eq!(result.is_ok(), true);
     }
 }

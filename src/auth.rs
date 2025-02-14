@@ -35,3 +35,32 @@ impl AuthSource for FatherDuckAuthSource {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_md5_password() {
+        let username = "fatherduck";
+        let password = "fatherduck";
+        let salt = vec![0, 0, 0, 0];
+        let hash_password = hash_md5_password(username, password, salt.as_ref());
+        assert_eq!(hash_password, "md5dfee6c201d33684e31b4add68eaca57f");
+    }
+
+    #[tokio::test]
+    async fn test_get_password() {
+        let login_info = LoginInfo::new(Some("fatherduck"), None, "".to_owned());
+        let result = FatherDuckAuthSource.get_password(&login_info).await;
+        assert_eq!(result.is_ok(), true);
+        assert_eq!(result.unwrap().password(), "md5dfee6c201d33684e31b4add68eaca57f".as_bytes());
+    }
+
+    #[tokio::test]
+    async fn test_get_password_invalid_username() {
+        let login_info = LoginInfo::new(Some("other_username"), None, "".to_owned());
+        let result = FatherDuckAuthSource.get_password(&login_info).await;
+        assert_eq!(result.is_err(), true);
+    }
+}

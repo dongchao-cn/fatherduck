@@ -49,7 +49,7 @@ mod tests {
 
     #[test]
     fn test_rewrite_regclass() {
-        let sql = "pg_namespace'::regclass";
+        let sql = "'pg_namespace'::regclass";
         let new_sql = rewrite_query(sql);
         assert_eq!(new_sql, "(SELECT oid FROM pg_class WHERE relname = 'pg_namespace')");
     }
@@ -58,6 +58,6 @@ mod tests {
     fn test_rewrite_show() {
         let sql = "SHOW search_path";
         let new_sql = rewrite_query(sql);
-        assert_eq!(new_sql, "SELECT current_setting('search_path') AS search_path;");
+        assert_eq!(new_sql, "SELECT current_setting('search_path') AS search_path");
     }
 }

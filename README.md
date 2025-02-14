@@ -11,7 +11,7 @@ show databases;
 select 1;
 
 PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name
-PGPASSWORD='pencil' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c "SELECT 1;"
+PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c "SELECT 1;"
 
 
 CREATE TABLE weather (
