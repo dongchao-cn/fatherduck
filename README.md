@@ -11,7 +11,14 @@ unzip libduckdb.zip -d ./
 
 ## 语法适配
 - [X] ANALYZE
-- [X] ALTER TABLE
+- [X] ALTER TABLE `CREATE TABLE integers (i INTEGER, j INTEGER);`
+    - [X] ALTER TABLE integers ADD COLUMN k INTEGER;
+    - [X] ALTER TABLE integers DROP k;
+    - [X] ALTER TABLE integers ALTER i TYPE VARCHAR;
+    - [X] ALTER TABLE integers RENAME i TO ii;
+    - [X] ALTER TABLE integers ADD PRIMARY KEY (i);
+    - [X] ALTER TABLE integers RENAME TO integers_old;
+    - [X] ALTER TABLE integers ALTER COLUMN i SET DEFAULT 10;
 - [ ] ALTER VIEW
 - [ ] ATTACH and DETACH
 - [ ] CALL
@@ -24,13 +31,25 @@ unzip libduckdb.zip -d ./
 - [ ] CREATE SECRET
 - [ ] CREATE SEQUENCE
 - [X] CREATE TABLE
+    - [X] CREATE TABLE t1 (i INTEGER, j INTEGER);
+    - [X] CREATE TABLE t1 AS SELECT 42 AS i, 84 AS j;
+    - [X] CREATE TEMP TABLE t1 AS SELECT 42 AS i, 84 AS j;
+    - [X] CREATE OR REPLACE TABLE t1 (i INTEGER, j INTEGER);
+    - [X] CREATE OR REPLACE TABLE t1 AS SELECT 42 AS i, 84 AS j;
+    - [X] CREATE OR REPLACE TEMP TABLE t1 AS SELECT 42 AS i, 84 AS j;
+    - [X] CREATE TABLE IF NOT EXISTS t1 (i INTEGER, j INTEGER);
 - [ ] CREATE VIEW
 - [ ] CREATE TYPE
 - [X] DELETE
 - [ ] DESCRIBE
+    - [X] DESCRIBE tbl;
+    - [X] DESCRIBE SELECT * FROM tbl;
+    - [ ] CREATE TABLE tbl_description AS SELECT * FROM (DESCRIBE tbl);
 - [X] DROP
 - [ ] EXPORT and IMPORT DATABASE
-- [X] INSERT
+- [X] INSERT `CREATE TABLE t1 (i INTEGER);`
+    - [X] INSERT INTO tbl VALUES (1), (2), (3);
+    - [X] INSERT OR IGNORE INTO tbl (i) VALUES (1);
 - [ ] LOAD / INSTALL
 - [ ] PIVOT
 - [ ] Profiling
@@ -51,6 +70,9 @@ select 1;
 
 PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name
 PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c "SELECT 1;"
+PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c "describe weather; \bind \g"
+PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c 'describe weather \bind \g'
+PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -f commands.sql > output.log
 
 
 CREATE TABLE weather (

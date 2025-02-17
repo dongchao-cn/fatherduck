@@ -4,3 +4,4 @@ libduckdb/*
 tarpaulin-report.html
 fatherduck.db
 fatherduck.db.wal
+tests/output

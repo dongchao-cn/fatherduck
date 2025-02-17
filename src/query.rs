@@ -425,6 +425,17 @@ lazy_static! {
         (Regex::new(r"^(?i)INSERT|UPDATE|DELETE").unwrap(), DescribeType::CONST(vec![
             FieldInfo::new("Count".to_string(), None, None, Type::INT4, FieldFormat::Text),
         ])),
+        (Regex::new(r"^(?i)DESCRIBE\s+(\w+)").unwrap(), DescribeType::CONST(vec![
+            FieldInfo::new("column_name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("column_type".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("null".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("key".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("default".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+        ])),
+        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+(\w+)\s+AS\s+SELECT").unwrap(), DescribeType::CONST(vec![
+            FieldInfo::new("Count".to_string(), None, None, Type::INT4, FieldFormat::Text),
+        ])),
     ];
 }
 
