@@ -433,7 +433,7 @@ lazy_static! {
             FieldInfo::new("default".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
             FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
         ])),
-        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+(\w+)\s+AS\s+SELECT").unwrap(), DescribeType::CONST(vec![
+        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+(\w+)").unwrap(), DescribeType::CONST(vec![
             FieldInfo::new("Count".to_string(), None, None, Type::INT4, FieldFormat::Text),
         ])),
     ];

@@ -9,7 +9,7 @@ CARGO_PID=$!
 echo "CARGO_PID: $CARGO_PID"
 
 # 定义要检查的端口
-PORT=5432
+PORT=55432
 
 # 持续检查端口是否打开
 while true; do
@@ -48,7 +48,8 @@ for file in *.sql; do
     mkdir $output_dir/$filename
     simple_file="$output_dir/$filename/${filename}_simple.sql"
     extented_file="$output_dir/$filename/${filename}_extended.sql"
-    cp $file $simple_file
+    # cp $file $simple_file
+    sed 's/$/ ;/' "$file" > "$simple_file"
     sed 's/$/ \\bind \\g/' "$file" > "$extented_file"
 
     simple_log="$output_dir/$filename/${filename}_simple.log"
@@ -56,10 +57,10 @@ for file in *.sql; do
     simple_log_err="${simple_log}.err"
     extented_log_err="${extented_log}.err"
 
-    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -f "$prepare_file"
-    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -f "$simple_file" > $simple_log 2> "$simple_log_err"
-    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -f "$prepare_file"
-    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -f "$extented_file" > $extented_log 2> "$extented_log_err"
+    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -f "$prepare_file"
+    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -f "$simple_file" > $simple_log 2> "$simple_log_err"
+    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -f "$prepare_file"
+    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -f "$extented_file" > $extented_log 2> "$extented_log_err"
     
     if [ -s "$simple_log_err" ]; then
         echo "出现错误 $simple_log_err:"
