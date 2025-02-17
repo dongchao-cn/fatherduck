@@ -2,3 +2,5 @@
 libduckdb/*
 !libduckdb/.gitkeep
 tarpaulin-report.html
+fatherduck.db
+fatherduck.db.wal

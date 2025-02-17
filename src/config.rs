@@ -14,7 +14,9 @@ pub struct FatherDuckConfig {
     pub port: u16,
     pub username: String,
     pub password: String,
+    pub path: String,
 }
+pub static MEMORY_PATH: &str = ":memory:";
 
 pub fn get_config() -> FatherDuckConfig {
     let settings = Config::builder()
