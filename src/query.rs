@@ -49,6 +49,39 @@ impl FatherDuckQueryHandler {
     }
 }
 
+
+enum ExecuteType {
+    QUERY(DescribeType),
+    EXECUTE,
+}
+
+enum DescribeType {
+    DYNAMIC,
+    CONST(Vec<FieldInfo>),
+}
+
+lazy_static! {
+    static ref EXECUTE_TPYE: Vec<(Regex, ExecuteType)> = vec![
+        (Regex::new(r"^(?i)SELECT").unwrap(), ExecuteType::QUERY(DescribeType::DYNAMIC)),
+        (Regex::new(r"^(?i)DESCRIBE\s+(\w+)").unwrap(), ExecuteType::QUERY(DescribeType::CONST(vec![
+            FieldInfo::new("column_name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("column_type".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("null".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("key".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("default".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+            FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+        ]))),
+
+        (Regex::new(r"^(?i)INSERT|UPDATE|DELETE|TRUNCATE\s+").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^(?i)CREATE\s+(UNIQUE\s+)?INDEX\s+").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^(?i)DROP\s+INDEX\s+").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^(?i)ALTER|DROP\s+TABLE\s+").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^(?i)DETACH|ATTACH|USE\s+").unwrap(), ExecuteType::EXECUTE),
+
+    ];
+}
+
 #[async_trait]
 impl SimpleQueryHandler for FatherDuckQueryHandler {
     async fn do_query<'a, C>(
@@ -72,7 +105,8 @@ impl SimpleQueryHandler for FatherDuckQueryHandler {
                         ExecuteType::QUERY(_) => {
                             let mut stmt = conn
                                 .prepare(&query)
-                                .map_err(|e| PgWireError::ApiError(Box::new(e))).unwrap();  
+                                .map_err(|e| PgWireError::ApiError(Box::new(e)))
+                                .unwrap();
                             res = stmt.query(params![])
                                 .map(|rows| {
                                     let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap());
@@ -455,38 +489,6 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
     }
 }
 
-enum ExecuteType {
-    QUERY(DescribeType),
-    EXECUTE,
-}
-
-enum DescribeType {
-    DYNAMIC,
-    CONST(Vec<FieldInfo>),
-}
-
-lazy_static! {
-    static ref EXECUTE_TPYE: Vec<(Regex, ExecuteType)> = vec![
-        (Regex::new(r"^(?i)SELECT").unwrap(), ExecuteType::QUERY(DescribeType::DYNAMIC)),
-        (Regex::new(r"^(?i)DESCRIBE\s+(\w+)").unwrap(), ExecuteType::QUERY(DescribeType::CONST(vec![
-            FieldInfo::new("column_name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-            FieldInfo::new("column_type".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-            FieldInfo::new("null".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-            FieldInfo::new("key".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-            FieldInfo::new("default".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-            FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-        ]))),
-
-        (Regex::new(r"^.*").unwrap(), ExecuteType::EXECUTE),
-
-        // (Regex::new(r"^(?i)INSERT|UPDATE|DELETE|TRUNCATE\s+").unwrap(), ExecuteType::EXECUTE),
-        // (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+").unwrap(), ExecuteType::EXECUTE),
-        // (Regex::new(r"^(?i)CREATE\s+(UNIQUE\s+)?INDEX\s+").unwrap(), ExecuteType::EXECUTE),
-        // (Regex::new(r"^(?i)ALTER|DROP\s+TABLE\s+").unwrap(), ExecuteType::EXECUTE),
-        // (Regex::new(r"^(?i)DETACH|ATTACH|USE\s+").unwrap(), ExecuteType::EXECUTE),
-
-    ];
-}
 
 #[cfg(test)]
 mod tests {
