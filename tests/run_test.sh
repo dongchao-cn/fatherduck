@@ -49,19 +49,35 @@ for file in *.sql; do
     simple_file="$output_dir/$filename/${filename}_simple.sql"
     extented_file="$output_dir/$filename/${filename}_extended.sql"
     # cp $file $simple_file
-    sed 's/$/ ;/' "$file" > "$simple_file"
-    sed 's/$/ \\bind \\g/' "$file" > "$extented_file"
+    {
+        echo "-- This is automatically generated, do not manually modify!!!"
+        cat $prepare_file
+        sed 's/$/ ;/' "$file"
+    } > "$simple_file"
+    {
+        echo "-- This is automatically generated, do not manually modify!!!"
+        cat $prepare_file
+        sed 's/$/ \\bind \\g/' "$file"
+    } > "$extented_file"
 
+    duckdb_log="$output_dir/$filename/${filename}_duckdb.log"
     simple_log="$output_dir/$filename/${filename}_simple.log"
     extented_log="$output_dir/$filename/${filename}_extended.log"
+    duckdb_log_err="${duckdb_log}.err"
     simple_log_err="${simple_log}.err"
     extented_log_err="${extented_log}.err"
 
-    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -f "$prepare_file"
-    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -f "$simple_file" > $simple_log 2> "$simple_log_err"
-    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -f "$prepare_file"
-    PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -f "$extented_file" > $extented_log 2> "$extented_log_err"
+
+    ../libduckdb/duckdb -init /dev/null -csv -nullvalue '' -f "$simple_file" > $duckdb_log 2> "$duckdb_log_err"
+    PGPASSWORD='fatherduck' psql -X -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -q -f "$simple_file" --csv > $simple_log 2> "$simple_log_err"
+    PGPASSWORD='fatherduck' psql -X -h 127.0.0.1 -p $PORT -U fatherduck -d database_name -q -f "$extented_file" --csv> $extented_log 2> "$extented_log_err"
     
+    if [ -s "$duckdb_log_err" ]; then
+        echo "出现错误 $duckdb_log_err:"
+        cat "$duckdb_log_err"
+        exit 1
+    fi
+
     if [ -s "$simple_log_err" ]; then
         echo "出现错误 $simple_log_err:"
         cat "$simple_log_err"
@@ -73,6 +89,7 @@ for file in *.sql; do
         cat "$extented_log_err"
         exit 1
     fi
+    diff --color -u $duckdb_log $simple_log
     diff --color -u $simple_log $extented_log
 
     echo -e "=============================执行SQL文件: $file 结束============================="

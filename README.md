@@ -1,7 +1,9 @@
 # fatherduck
 
-## 准备libduckdb
+## 准备duckdb/libduckdb
 cd ./libduckdb
+curl -L -o duckdb.zip https://github.com/duckdb/duckdb/releases/download/v1.2.0/duckdb_cli-linux-amd64.zip
+unzip duckdb.zip -d ./
 curl -L -o libduckdb.zip https://github.com/duckdb/duckdb/releases/download/v1.2.0/libduckdb-linux-amd64.zip
 unzip libduckdb.zip -d ./
 
@@ -11,14 +13,7 @@ unzip libduckdb.zip -d ./
 
 ## 语法适配
 - [X] ANALYZE
-- [X] ALTER TABLE `CREATE TABLE integers (i INTEGER, j INTEGER);`
-    - [X] ALTER TABLE integers ADD COLUMN k INTEGER;
-    - [X] ALTER TABLE integers DROP k;
-    - [X] ALTER TABLE integers ALTER i TYPE VARCHAR;
-    - [X] ALTER TABLE integers RENAME i TO ii;
-    - [X] ALTER TABLE integers ADD PRIMARY KEY (i);
-    - [X] ALTER TABLE integers RENAME TO integers_old;
-    - [X] ALTER TABLE integers ALTER COLUMN i SET DEFAULT 10;
+- [X] ALTER TABLE `alter_table.sql`
 - [ ] ALTER VIEW
 - [ ] ATTACH and DETACH
 - [ ] CALL
@@ -30,14 +25,7 @@ unzip libduckdb.zip -d ./
 - [ ] CREATE SCHEMA
 - [ ] CREATE SECRET
 - [ ] CREATE SEQUENCE
-- [X] CREATE TABLE
-    - [X] CREATE TABLE t1 (i INTEGER, j INTEGER);
-    - [X] CREATE TABLE t1 AS SELECT 42 AS i, 84 AS j;
-    - [X] CREATE TEMP TABLE t1 AS SELECT 42 AS i, 84 AS j;
-    - [X] CREATE OR REPLACE TABLE t1 (i INTEGER, j INTEGER);
-    - [X] CREATE OR REPLACE TABLE t1 AS SELECT 42 AS i, 84 AS j;
-    - [X] CREATE OR REPLACE TEMP TABLE t1 AS SELECT 42 AS i, 84 AS j;
-    - [X] CREATE TABLE IF NOT EXISTS t1 (i INTEGER, j INTEGER);
+- [X] CREATE TABLE `create_table.sql`
 - [ ] CREATE VIEW
 - [ ] CREATE TYPE
 - [X] DELETE
@@ -47,9 +35,7 @@ unzip libduckdb.zip -d ./
     - [ ] CREATE TABLE tbl_description AS SELECT * FROM (DESCRIBE tbl);
 - [X] DROP
 - [ ] EXPORT and IMPORT DATABASE
-- [X] INSERT `CREATE TABLE t1 (i INTEGER);`
-    - [X] INSERT INTO tbl VALUES (1), (2), (3);
-    - [X] INSERT OR IGNORE INTO tbl (i) VALUES (1);
+- [X] INSERT `insert.sql`
 - [ ] LOAD / INSTALL
 - [ ] PIVOT
 - [ ] Profiling

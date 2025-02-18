@@ -12,7 +12,7 @@ use futures::Stream;
 use pgwire::api::portal::{Format, Portal};
 use pgwire::api::query::{ExtendedQueryHandler, SimpleQueryHandler};
 use pgwire::api::results::{
-    DataRowEncoder, DescribePortalResponse, DescribeStatementResponse, FieldFormat, FieldInfo, QueryResponse, Response
+    DataRowEncoder, DescribePortalResponse, DescribeStatementResponse, FieldFormat, FieldInfo, QueryResponse, Response, Tag
 };
 use pgwire::api::stmt::StoredStatement;
 use pgwire::api::{ClientInfo, Type};
@@ -23,6 +23,8 @@ use lazy_static::lazy_static;
 use regex::Regex;
 
 use crate::parser::FatherDuckQueryParser;
+use crate::parser::rewrite_query;
+
 use crate::error::UnknownError;
 
 use crate::config::{FATHERDUCK_CONFIG, MEMORY_PATH};
@@ -59,23 +61,40 @@ impl SimpleQueryHandler for FatherDuckQueryHandler {
     {
         let conn = self.conn.lock().unwrap();
         let result = panic::catch_unwind(|| {
-            println!("query: {}", query);
-            let mut stmt = conn
-                .prepare(query)
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-            stmt.query(params![])
-                .map(|rows| {
-                    // println!("get row_desc_from_stmt!");
-                    let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap());
-                    let s = encode_row_data(rows, header.clone());
-                    vec![Response::Query(QueryResponse::new(header.clone(), s))]
-                })
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))
+            println!("SimpleQueryHandler.do_query: {}", query);
+            let query = rewrite_query(query);
+            let mut res: PgWireResult<Vec<Response<'a>>> = Err(PgWireError::ApiError(Box::new(
+                UnknownError::UnknownError("SimpleQueryHandler.do_query No matching query found".to_owned()))));
+            EXECUTE_TPYE.iter().for_each(|(re, execute_type)| {
+
+                if re.is_match(&query) {
+                    match execute_type {
+                        ExecuteType::QUERY(_) => {
+                            let mut stmt = conn
+                                .prepare(&query)
+                                .map_err(|e| PgWireError::ApiError(Box::new(e))).unwrap();  
+                            res = stmt.query(params![])
+                                .map(|rows| {
+                                    let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap());
+                                    let s = encode_row_data(rows, header.clone());
+                                    vec![Response::Query(QueryResponse::new(header.clone(), s))]
+                                })
+                                .map_err(|e| PgWireError::ApiError(Box::new(e)))
+                        }
+                        ExecuteType::EXECUTE => {
+                            let _ = conn.execute(&query, params![]);
+                            res = Ok(vec![]);
+                        }
+                    }
+                    return;
+                }
+            });
+            res.unwrap()
         });
         match result {
-            Ok(res) => res,
+            Ok(res) => Ok(res),
             Err(_) => Err(PgWireError::ApiError(Box::new(
-                UnknownError::UnknownError("Server thread panicked".to_owned()),
+                UnknownError::UnknownError(format!("Server thread panicked")),
             ))),
         }
     }
@@ -310,21 +329,37 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
         let result = panic::catch_unwind(|| {
             let query = &portal.statement.statement;
             println!("ExtendedQueryHandler.do_query query: {}", query);
-            let mut stmt = conn
-                .prepare_cached(query)
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
-            let params = get_params(portal);
-            let params_ref = params
-                .iter()
-                .map(|f| f.as_ref())
-                .collect::<Vec<&dyn duckdb::ToSql>>();
-            stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
-                .map(|rows| {
-                    let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &portal.result_column_format).unwrap());
-                    let s = encode_row_data(rows, header.clone());
-                    Response::Query(QueryResponse::new(header, s))
-                })
-                .map_err(|e| PgWireError::ApiError(Box::new(e)))
+            let mut res: Result<Response<'_>, PgWireError> = Err(PgWireError::ApiError(Box::new(
+                UnknownError::UnknownError("ExtendedQueryHandler.do_query No matching query found".to_owned()))));
+            EXECUTE_TPYE.iter().for_each(|(re, execute_type)| {
+                if re.is_match(query) {
+                    let mut stmt = conn
+                        .prepare(query)
+                        .map_err(|e| PgWireError::ApiError(Box::new(e))).unwrap();
+                    let params = get_params(portal);
+                    let params_ref = params
+                        .iter()
+                        .map(|f| f.as_ref())
+                        .collect::<Vec<&dyn duckdb::ToSql>>();
+                    match execute_type {
+                        ExecuteType::QUERY(_) => {
+                            res = stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
+                            .map(|rows| {
+                                let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &portal.result_column_format).unwrap());
+                                let s = encode_row_data(rows, header.clone());
+                                Response::Query(QueryResponse::new(header, s))
+                            })
+                            .map_err(|e| PgWireError::ApiError(Box::new(e)));
+                        }
+                        ExecuteType::EXECUTE => {
+                            let row_modify = stmt.execute::<&[&dyn duckdb::ToSql]>(params_ref.as_ref()).unwrap();
+                            res = Ok(Response::Execution(Tag::new("").with_rows(row_modify)))
+                        }
+                    }
+                    return;
+                }
+            });
+            res
         });
         match result {
             Ok(res) => res,
@@ -367,42 +402,49 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
         let result = panic::catch_unwind(|| {
             let query = &portal.statement.statement;
             println!("ExtendedQueryHandler.do_describe_portal query: {}", query);
-            let mut field_infos: Vec<FieldInfo> = Vec::new();
-            DESCRIBE_HEADER.iter().for_each(|(re, describe_type)| {
+            let mut res: Result<DescribePortalResponse<>, PgWireError> = Err(PgWireError::ApiError(Box::new(
+                UnknownError::UnknownError("No matching describe found".to_owned()))));
+            EXECUTE_TPYE.iter().for_each(|(re, execute_type)| {
                 if re.is_match(query) {
-                    match describe_type {
-                        DescribeType::DESCRIBE => {
-                            let query = &("DESCRIBE ".to_string() + query);
-                            let mut stmt = conn
-                                .prepare(query)
-                                .map_err(|e| PgWireError::ApiError(Box::new(e)))
-                                .unwrap();
-                            let params = get_params(portal);
-                            let params_ref = params
-                                .iter()
-                                .map(|f| f.as_ref())
-                                .collect::<Vec<&dyn duckdb::ToSql>>();
-                            params_ref.iter().for_each(|f| {
-                                println!("do_describe_portal params_ref: {:?}", f.to_sql());
-                            });
-
-                            stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
-                                .map(|mut rows| {
-                                    let header = get_field_infos_from_describe(&mut rows);
-                                    field_infos = header.unwrap();
-                                    // header.map(|fields| fields)
-                                })
-                                .map_err(|e| PgWireError::ApiError(Box::new(e)))
-                                .unwrap()
+                    match execute_type {
+                        ExecuteType::QUERY(describe_type) => {
+                            match describe_type {
+                                DescribeType::DYNAMIC => {
+                                    let query = &("DESCRIBE ".to_string() + query);
+                                    let mut stmt = conn
+                                        .prepare(query)
+                                        .map_err(|e| PgWireError::ApiError(Box::new(e)))
+                                        .unwrap();
+                                    let params = get_params(portal);
+                                    let params_ref = params
+                                        .iter()
+                                        .map(|f| f.as_ref())
+                                        .collect::<Vec<&dyn duckdb::ToSql>>();
+                                    params_ref.iter().for_each(|f| {
+                                        println!("do_describe_portal params_ref: {:?}", f.to_sql());
+                                    });
+        
+                                    stmt.query::<&[&dyn duckdb::ToSql]>(params_ref.as_ref())
+                                        .map(|mut rows| {
+                                            let header = get_field_infos_from_describe(&mut rows);
+                                            res = Ok(DescribePortalResponse::new(header.unwrap()));
+                                        })
+                                        .map_err(|e| PgWireError::ApiError(Box::new(e)))
+                                        .unwrap()
+                                }
+                                DescribeType::CONST(filelds) => {
+                                    res = Ok(DescribePortalResponse::new(filelds.clone()));
+                                }
+                            }
                         }
-                        DescribeType::CONST(filelds) => {
-                            field_infos = filelds.clone();
+                        ExecuteType::EXECUTE => {
+                            res = Ok(DescribePortalResponse::new(vec![]));
                         }
                     }
                     return;
                 }
             });
-            Ok(DescribePortalResponse::new(field_infos))
+            res
         });
         match result {
             Ok(res) => res,
@@ -413,31 +455,56 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
     }
 }
 
-enum DescribeType {
-    DESCRIBE,
-    CONST(Vec<FieldInfo>),
+enum ExecuteType {
+    QUERY(DescribeType),
+    EXECUTE,
 }
 
 lazy_static! {
-    // 定义不可变的替换规则
-    static ref DESCRIBE_HEADER: Vec<(Regex, DescribeType)> = vec![
-        (Regex::new(r"^(?i)SELECT").unwrap(), DescribeType::DESCRIBE),
-        (Regex::new(r"^(?i)INSERT|UPDATE|DELETE").unwrap(), DescribeType::CONST(vec![
-            FieldInfo::new("Count".to_string(), None, None, Type::INT4, FieldFormat::Text),
-        ])),
-        (Regex::new(r"^(?i)DESCRIBE\s+(\w+)").unwrap(), DescribeType::CONST(vec![
+    static ref EXECUTE_TPYE: Vec<(Regex, ExecuteType)> = vec![
+        (Regex::new(r"^(?i)SELECT").unwrap(), ExecuteType::QUERY(DescribeType::DYNAMIC)),
+        (Regex::new(r"^(?i)DESCRIBE\s+(\w+)").unwrap(), ExecuteType::QUERY(DescribeType::CONST(vec![
             FieldInfo::new("column_name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
             FieldInfo::new("column_type".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
             FieldInfo::new("null".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
             FieldInfo::new("key".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
             FieldInfo::new("default".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
             FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-        ])),
-        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+(\w+)").unwrap(), DescribeType::CONST(vec![
-            FieldInfo::new("Count".to_string(), None, None, Type::INT4, FieldFormat::Text),
-        ])),
+        ]))),
+
+        (Regex::new(r"^(?i)INSERT|UPDATE|DELETE").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+(\w+)").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^(?i)ALTER\s+TABLE\s+").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^(?i)DETACH|ATTACH|USE\s+").unwrap(), ExecuteType::EXECUTE),
+
     ];
 }
+
+enum DescribeType {
+    DYNAMIC,
+    CONST(Vec<FieldInfo>),
+}
+
+// lazy_static! {
+//     // 定义不可变的替换规则
+//     static ref DESCRIBE_HEADER: Vec<(Regex, DescribeType)> = vec![
+//         (Regex::new(r"^(?i)SELECT").unwrap(), DescribeType::DYNAMIC),
+//         (Regex::new(r"^(?i)DESCRIBE\s+(\w+)").unwrap(), DescribeType::CONST(vec![
+//             FieldInfo::new("column_name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+//             FieldInfo::new("column_type".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+//             FieldInfo::new("null".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+//             FieldInfo::new("key".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+//             FieldInfo::new("default".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+//             FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+//         ])),
+//         // (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+(\w+)").unwrap(), DescribeType::CONST(vec![
+//         //     FieldInfo::new("Count".to_string(), None, None, Type::INT4, FieldFormat::Text),
+//         // ])),
+//         // (Regex::new(r"^(?i)ALTER\s+TABLE\s+").unwrap(), DescribeType::CONST(vec![
+//         //     FieldInfo::new("Success".to_string(), None, None, Type::INT4, FieldFormat::Text),
+//         // ])),
+//     ];
+// }
 
 #[cfg(test)]
 mod tests {

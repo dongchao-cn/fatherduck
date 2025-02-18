@@ -18,7 +18,8 @@ lazy_static! {
     ];
 }
 
-fn rewrite_query(sql: &str) -> String {
+pub fn rewrite_query(sql: &str) -> String {
+    // println!("rewrite query");
     let trim_sql = sql.trim();
     let result = QUERY_REPLACEMENTS.iter().fold(trim_sql.to_string(), |acc, (re, replacement)| {
         re.replace_all(&acc, *replacement).to_string()
