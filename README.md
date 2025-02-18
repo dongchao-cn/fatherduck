@@ -12,7 +12,7 @@ unzip libduckdb.zip -d ./
 - [X] dbeaver
 
 ## 语法适配
-- [X] ANALYZE
+- [ ] ANALYZE
 - [X] [ALTER TABLE](tests/alter_table.sql)
 - [ ] ALTER VIEW
 - [ ] ATTACH and DETACH
@@ -20,7 +20,7 @@ unzip libduckdb.zip -d ./
 - [ ] CHECKPOINT
 - [ ] COMMENT ON
 - [ ] COPY
-- [ ] CREATE INDEX
+- [ ] [CREATE INDEX](tests/create_index.sql)
 - [ ] CREATE MACRO
 - [ ] CREATE SCHEMA
 - [ ] CREATE SECRET
@@ -28,24 +28,21 @@ unzip libduckdb.zip -d ./
 - [X] [CREATE TABLE](tests/create_table.sql)
 - [ ] CREATE VIEW
 - [ ] CREATE TYPE
-- [X] DELETE
-- [ ] DESCRIBE
-    - [X] DESCRIBE tbl;
-    - [X] DESCRIBE SELECT * FROM tbl;
-    - [ ] CREATE TABLE tbl_description AS SELECT * FROM (DESCRIBE tbl);
-- [X] DROP
+- [X] [DELETE](tests/delete.sql)
+- [X] [DESCRIBE](tests/describe.sql)
+- [X] [DROP](tests/drop.sql)
 - [ ] EXPORT and IMPORT DATABASE
 - [X] [INSERT](tests/insert.sql)
 - [ ] LOAD / INSTALL
 - [ ] PIVOT
 - [ ] Profiling
-- [X] SELECT
+- [X] [SELECT](tests/select.sql)
 - [ ] SET / RESET
 - [ ] SET VARIABLE
 - [ ] SUMMARIZE
 - [ ] Transaction Management
 - [ ] UNPIVOT
-- [X] UPDATE
+- [X] [UPDATE](tests/update.sql)
 - [ ] USE
 - [ ] VACUUM
 

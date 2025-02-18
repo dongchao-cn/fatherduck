@@ -65,9 +65,9 @@ impl SimpleQueryHandler for FatherDuckQueryHandler {
             let query = rewrite_query(query);
             let mut res: PgWireResult<Vec<Response<'a>>> = Err(PgWireError::ApiError(Box::new(
                 UnknownError::UnknownError("SimpleQueryHandler.do_query No matching query found".to_owned()))));
-            EXECUTE_TPYE.iter().for_each(|(re, execute_type)| {
-
+            for (re, execute_type) in EXECUTE_TPYE.iter() {
                 if re.is_match(&query) {
+                    println!("match re: {:?}", re);
                     match execute_type {
                         ExecuteType::QUERY(_) => {
                             let mut stmt = conn
@@ -86,9 +86,9 @@ impl SimpleQueryHandler for FatherDuckQueryHandler {
                             res = Ok(vec![]);
                         }
                     }
-                    return;
+                    break;
                 }
-            });
+            };
             res.unwrap()
         });
         match result {
@@ -331,7 +331,7 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
             println!("ExtendedQueryHandler.do_query query: {}", query);
             let mut res: Result<Response<'_>, PgWireError> = Err(PgWireError::ApiError(Box::new(
                 UnknownError::UnknownError("ExtendedQueryHandler.do_query No matching query found".to_owned()))));
-            EXECUTE_TPYE.iter().for_each(|(re, execute_type)| {
+            for (re, execute_type) in EXECUTE_TPYE.iter() {
                 if re.is_match(query) {
                     let mut stmt = conn
                         .prepare(query)
@@ -356,9 +356,9 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
                             res = Ok(Response::Execution(Tag::new("").with_rows(row_modify)))
                         }
                     }
-                    return;
+                    break;
                 }
-            });
+            };
             res
         });
         match result {
@@ -404,7 +404,7 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
             println!("ExtendedQueryHandler.do_describe_portal query: {}", query);
             let mut res: Result<DescribePortalResponse<>, PgWireError> = Err(PgWireError::ApiError(Box::new(
                 UnknownError::UnknownError("No matching describe found".to_owned()))));
-            EXECUTE_TPYE.iter().for_each(|(re, execute_type)| {
+            for (re, execute_type) in EXECUTE_TPYE.iter() {
                 if re.is_match(query) {
                     match execute_type {
                         ExecuteType::QUERY(describe_type) => {
@@ -441,9 +441,9 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
                             res = Ok(DescribePortalResponse::new(vec![]));
                         }
                     }
-                    return;
+                    break;
                 }
-            });
+            };
             res
         });
         match result {
@@ -477,10 +477,13 @@ lazy_static! {
             FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
         ]))),
 
-        (Regex::new(r"^(?i)INSERT|UPDATE|DELETE").unwrap(), ExecuteType::EXECUTE),
-        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+(\w+)").unwrap(), ExecuteType::EXECUTE),
-        (Regex::new(r"^(?i)ALTER\s+TABLE\s+").unwrap(), ExecuteType::EXECUTE),
-        (Regex::new(r"^(?i)DETACH|ATTACH|USE\s+").unwrap(), ExecuteType::EXECUTE),
+        (Regex::new(r"^.*").unwrap(), ExecuteType::EXECUTE),
+
+        // (Regex::new(r"^(?i)INSERT|UPDATE|DELETE|TRUNCATE\s+").unwrap(), ExecuteType::EXECUTE),
+        // (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+").unwrap(), ExecuteType::EXECUTE),
+        // (Regex::new(r"^(?i)CREATE\s+(UNIQUE\s+)?INDEX\s+").unwrap(), ExecuteType::EXECUTE),
+        // (Regex::new(r"^(?i)ALTER|DROP\s+TABLE\s+").unwrap(), ExecuteType::EXECUTE),
+        // (Regex::new(r"^(?i)DETACH|ATTACH|USE\s+").unwrap(), ExecuteType::EXECUTE),
 
     ];
 }

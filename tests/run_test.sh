@@ -65,13 +65,13 @@ for file in "${sql_files[@]}"; do
         echo "-- This is automatically generated, do not manually modify!!!"
         cat $prepare_file
         echo "-- after prepare"
-        sed '/./s/$/ ;/' "$file"
+        cat $file
     } > "$simple_file"
     {
         echo "-- This is automatically generated, do not manually modify!!!"
         cat $prepare_file
         echo "-- after prepare"
-        sed '/./s/$/ \\bind \\g/' "$file"
+        sed 's/;/ \\bind \\g /g' "$file"
     } > "$extented_file"
 
     duckdb_log="$output_dir/$filename/${filename}_duckdb.log"
