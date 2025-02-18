@@ -27,7 +27,6 @@ use crate::parser::rewrite_query;
 
 use crate::error::UnknownError;
 
-use crate::config::{FATHERDUCK_CONFIG, MEMORY_PATH};
 
 pub struct FatherDuckQueryHandler {
     conn: Arc<Mutex<Connection>>,
@@ -35,20 +34,13 @@ pub struct FatherDuckQueryHandler {
 }
 
 impl FatherDuckQueryHandler {
-    pub fn new() -> FatherDuckQueryHandler {
-        let conn;
-        if FATHERDUCK_CONFIG.path == MEMORY_PATH {
-            conn = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
-        } else {
-            conn = Arc::new(Mutex::new(Connection::open(&FATHERDUCK_CONFIG.path).unwrap()));
-        }
+    pub fn new(conn: Arc<Mutex<Connection>>) -> FatherDuckQueryHandler {
         FatherDuckQueryHandler {
             conn: conn,
             query_parser: Arc::new(FatherDuckQueryParser::new()),
         }
     }
 }
-
 
 enum ExecuteType {
     QUERY(DescribeType),

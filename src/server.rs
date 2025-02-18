@@ -1,5 +1,4 @@
-
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use pgwire::api::auth::md5pass::Md5PasswordAuthStartupHandler;
 use pgwire::api::auth::DefaultServerParameterProvider;
@@ -7,11 +6,12 @@ use pgwire::api::copy::NoopCopyHandler;
 use pgwire::api::PgWireServerHandlers;
 use pgwire::tokio::process_socket;
 use tokio::net::TcpListener;
+use duckdb::Connection;
 
 use crate::auth::FatherDuckAuthSource;
 use crate::query::FatherDuckQueryHandler;
 use crate::error::FatherDuckErrorHandler;
-use crate::config::FATHERDUCK_CONFIG;
+use crate::config::{FATHERDUCK_CONFIG, MEMORY_PATH};
 
 struct DuckDBBackendFactory {
     query_handler: Arc<FatherDuckQueryHandler>,
@@ -50,18 +50,27 @@ impl PgWireServerHandlers for DuckDBBackendFactory {
     }
 }
 
+fn get_connection() -> Arc<Mutex<Connection>> {
+    let conn;
+    if FATHERDUCK_CONFIG.path == MEMORY_PATH {
+        conn = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
+    } else {
+        conn = Arc::new(Mutex::new(Connection::open(&FATHERDUCK_CONFIG.path).unwrap()));
+    }
+    conn
+}
 pub async fn start_server() {
-    let factory = Arc::new(DuckDBBackendFactory {
-        query_handler: Arc::new(FatherDuckQueryHandler::new()),
-        error_handler: Arc::new(FatherDuckErrorHandler::new()),
-    });
     let server_addr = format!("{}:{}", &FATHERDUCK_CONFIG.host, &FATHERDUCK_CONFIG.port);
     let listener = TcpListener::bind(&server_addr).await.unwrap();
     println!("Listening to {}", server_addr);
     loop {
         let incoming_socket = listener.accept().await.unwrap();
-        let factory_ref = factory.clone();
 
-        tokio::spawn(async move { process_socket(incoming_socket.0, None, factory_ref).await });
+        let factory = DuckDBBackendFactory {
+            query_handler: Arc::new(FatherDuckQueryHandler::new(get_connection())),
+            error_handler: Arc::new(FatherDuckErrorHandler::new()),
+        };
+
+        tokio::spawn(async move { process_socket(incoming_socket.0, None, factory).await });
     }
 }
