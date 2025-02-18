@@ -4,8 +4,8 @@ ATTACH ':memory:' AS test;
 USE test;
 
 CREATE TABLE t1 (
-    i INTEGER, 
-    j INTEGER
+    i INTEGER PRIMARY KEY,
+    j varchar
 );
 INSERT INTO t1
-    VALUES (1, 2), (3, 4), (5, 6);
+    VALUES (1, 'a'), (2, 'b'), (3, 'c');

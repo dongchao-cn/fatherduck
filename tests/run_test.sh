@@ -1,6 +1,18 @@
 #!/bin/bash
 set -e
 
+if [ -z "$1" ]; then
+    # 参数为空，获取所有 .sql 文件
+    sql_files=(*.sql)
+else
+    # 参数不为空，使用传入的参数
+    sql_files=("$@")
+fi
+for file in "${sql_files[@]}"; do
+  echo "$file"
+done
+# exit 1
+
 killall -q fatherduck || true
 cargo build
 echo "启动 cargo run"
@@ -38,7 +50,7 @@ echo "$output_dir 目录已新建。"
 
 prepare_file="prepare.sql"
 # 遍历当前目录下所有 .sql 文件
-for file in *.sql; do
+for file in "${sql_files[@]}"; do
     if [[ "$file" == "$prepare_file" ]]; then
         continue
     fi
@@ -52,12 +64,14 @@ for file in *.sql; do
     {
         echo "-- This is automatically generated, do not manually modify!!!"
         cat $prepare_file
-        sed 's/$/ ;/' "$file"
+        echo "-- after prepare"
+        sed '/./s/$/ ;/' "$file"
     } > "$simple_file"
     {
         echo "-- This is automatically generated, do not manually modify!!!"
         cat $prepare_file
-        sed 's/$/ \\bind \\g/' "$file"
+        echo "-- after prepare"
+        sed '/./s/$/ \\bind \\g/' "$file"
     } > "$extented_file"
 
     duckdb_log="$output_dir/$filename/${filename}_duckdb.log"

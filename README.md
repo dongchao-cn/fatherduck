@@ -13,7 +13,7 @@ unzip libduckdb.zip -d ./
 
 ## 语法适配
 - [X] ANALYZE
-- [X] ALTER TABLE `alter_table.sql`
+- [X] [ALTER TABLE](tests/alter_table.sql)
 - [ ] ALTER VIEW
 - [ ] ATTACH and DETACH
 - [ ] CALL
@@ -25,7 +25,7 @@ unzip libduckdb.zip -d ./
 - [ ] CREATE SCHEMA
 - [ ] CREATE SECRET
 - [ ] CREATE SEQUENCE
-- [X] CREATE TABLE `create_table.sql`
+- [X] [CREATE TABLE](tests/create_table.sql)
 - [ ] CREATE VIEW
 - [ ] CREATE TYPE
 - [X] DELETE
@@ -35,7 +35,7 @@ unzip libduckdb.zip -d ./
     - [ ] CREATE TABLE tbl_description AS SELECT * FROM (DESCRIBE tbl);
 - [X] DROP
 - [ ] EXPORT and IMPORT DATABASE
-- [X] INSERT `insert.sql`
+- [X] [INSERT](tests/insert.sql)
 - [ ] LOAD / INSTALL
 - [ ] PIVOT
 - [ ] Profiling
@@ -56,9 +56,6 @@ select 1;
 
 PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name
 PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c "SELECT 1;"
-PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c "describe weather; \bind \g"
-PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c 'describe weather \bind \g'
-PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -f commands.sql > output.log
 
 
 CREATE TABLE weather (

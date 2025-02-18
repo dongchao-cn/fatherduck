@@ -460,6 +460,11 @@ enum ExecuteType {
     EXECUTE,
 }
 
+enum DescribeType {
+    DYNAMIC,
+    CONST(Vec<FieldInfo>),
+}
+
 lazy_static! {
     static ref EXECUTE_TPYE: Vec<(Regex, ExecuteType)> = vec![
         (Regex::new(r"^(?i)SELECT").unwrap(), ExecuteType::QUERY(DescribeType::DYNAMIC)),
@@ -479,32 +484,6 @@ lazy_static! {
 
     ];
 }
-
-enum DescribeType {
-    DYNAMIC,
-    CONST(Vec<FieldInfo>),
-}
-
-// lazy_static! {
-//     // 定义不可变的替换规则
-//     static ref DESCRIBE_HEADER: Vec<(Regex, DescribeType)> = vec![
-//         (Regex::new(r"^(?i)SELECT").unwrap(), DescribeType::DYNAMIC),
-//         (Regex::new(r"^(?i)DESCRIBE\s+(\w+)").unwrap(), DescribeType::CONST(vec![
-//             FieldInfo::new("column_name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-//             FieldInfo::new("column_type".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-//             FieldInfo::new("null".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-//             FieldInfo::new("key".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-//             FieldInfo::new("default".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-//             FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
-//         ])),
-//         // (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+(\w+)").unwrap(), DescribeType::CONST(vec![
-//         //     FieldInfo::new("Count".to_string(), None, None, Type::INT4, FieldFormat::Text),
-//         // ])),
-//         // (Regex::new(r"^(?i)ALTER\s+TABLE\s+").unwrap(), DescribeType::CONST(vec![
-//         //     FieldInfo::new("Success".to_string(), None, None, Type::INT4, FieldFormat::Text),
-//         // ])),
-//     ];
-// }
 
 #[cfg(test)]
 mod tests {
