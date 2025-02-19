@@ -12,21 +12,21 @@ unzip libduckdb.zip -d ./
 - [X] dbeaver
 
 ## 语法适配
-- [ ] ANALYZE
+- [X] [ANALYZE](tests/analyze.sql)
 - [X] [ALTER TABLE](tests/alter_table.sql)
-- [ ] ALTER VIEW
-- [ ] ATTACH and DETACH
-- [ ] CALL
-- [ ] CHECKPOINT
-- [ ] COMMENT ON
+- [X] [ALTER VIEW](tests/alter_view.sql)
+- [X] [ATTACH and DETACH](tests/attach_use_detach.sql)
+- [X] [CALL](tests/call.sql)
+- [X] [CHECKPOINT](tests/checkpoint.sql)
+- [X] [COMMENT ON](tests/comment_on.sql)
 - [ ] COPY
-- [ ] [CREATE INDEX](tests/create_index.sql)
-- [ ] CREATE MACRO
-- [ ] CREATE SCHEMA
+- [X] [CREATE INDEX](tests/create_index.sql)
+- [X] [CREATE MACRO](tests/create_macro.sql)
+- [X] [CREATE SCHEMA](tests/create_schema.sql)
 - [ ] CREATE SECRET
-- [ ] CREATE SEQUENCE
+- [X] [CREATE SEQUENCE](tests/create_sequence.sql)
 - [X] [CREATE TABLE](tests/create_table.sql)
-- [ ] CREATE VIEW
+- [X] [CREATE VIEW](tests/create_view.sql)
 - [ ] CREATE TYPE
 - [X] [DELETE](tests/delete.sql)
 - [X] [DESCRIBE](tests/describe.sql)
@@ -34,17 +34,17 @@ unzip libduckdb.zip -d ./
 - [ ] EXPORT and IMPORT DATABASE
 - [X] [INSERT](tests/insert.sql)
 - [ ] LOAD / INSTALL
-- [ ] PIVOT
-- [ ] Profiling
+- [ ] [PIVOT](tests/povit.sql) `todo` https://github.com/duckdb/duckdb/issues/7720
+- [ ] [Profiling](tests/profiling.sql) `todo`
 - [X] [SELECT](tests/select.sql)
-- [ ] SET / RESET
-- [ ] SET VARIABLE
-- [ ] SUMMARIZE
-- [ ] Transaction Management
-- [ ] UNPIVOT
+- [X] [SET / RESET](tests/set_reset.sql)
+- [X] [SET VARIABLE](tests/set_variable.sql)
+- [ ] [SUMMARIZE](tests/summarize.sql) `todo`
+- [X] [Transaction Management](tests/transactions.sql)
+- [X] [UNPIVOT](tests/unpovit.sql)
 - [X] [UPDATE](tests/update.sql)
-- [ ] USE
-- [ ] VACUUM
+- [X] [USE](tests/attach_use_detach.sql)
+- [X] [VACUUM](tests/vacuum.sql)
 
 ## 测试
 ```

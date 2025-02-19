@@ -1,0 +1,10 @@
+CREATE SEQUENCE serial;
+
+CREATE OR REPLACE SEQUENCE serial;
+
+DROP SEQUENCE serial;
+
+CREATE SEQUENCE id_sequence START 1;
+CREATE TABLE t2 (id INTEGER DEFAULT nextval('id_sequence'), s VARCHAR);
+INSERT INTO t2 (s) VALUES ('hello'), ('world');
+SELECT * FROM t2;

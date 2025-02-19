@@ -1,0 +1,2 @@
+-- EXPLAIN select * from t1;
+-- EXPLAIN ANALYZE select * from t1;

@@ -20,7 +20,7 @@ use pgwire::error::{ErrorInfo, PgWireError, PgWireResult};
 use pgwire::messages::data::DataRow;
 use chrono::{NaiveDate, Duration};
 use lazy_static::lazy_static;
-use regex::Regex;
+use fancy_regex::Regex;
 
 use crate::parser::FatherDuckQueryParser;
 use crate::parser::rewrite_query;
@@ -55,6 +55,7 @@ enum DescribeType {
 // https://www.postgresql.org/docs/current/protocol-message-formats.html
 lazy_static! {
     static ref EXECUTE_TPYE: Vec<(Regex, ExecuteType, String, Option<u32>)> = vec![
+        // QUERY
         (Regex::new(r"^(?i)SELECT").unwrap(), ExecuteType::QUERY(DescribeType::DYNAMIC), "".to_owned(), None),
         (Regex::new(r"^(?i)DESCRIBE\s+(\w+)").unwrap(), ExecuteType::QUERY(DescribeType::CONST(vec![
             FieldInfo::new("column_name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
@@ -64,16 +65,36 @@ lazy_static! {
             FieldInfo::new("default".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
             FieldInfo::new("extra".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
         ])), "".to_owned(), None),
+        (Regex::new(r"^(?i)SHOW\s+DATABASES").unwrap(), ExecuteType::QUERY(DescribeType::CONST(vec![
+            FieldInfo::new("database_name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+        ])), "".to_owned(), None),
+        (Regex::new(r"^(?i)SHOW\s+TABLES").unwrap(), ExecuteType::QUERY(DescribeType::CONST(vec![
+            FieldInfo::new("name".to_string(), None, None, Type::VARCHAR, FieldFormat::Text),
+        ])), "".to_owned(), None),
+        (Regex::new(r"^(?i)UNPIVOT|PIVOT_LONGER\s+").unwrap(), ExecuteType::QUERY(DescribeType::DYNAMIC), "".to_owned(), None),
 
+        // EXECUTE
         (Regex::new(r"^(?i)INSERT\s+").unwrap(), ExecuteType::EXECUTE, "INSERT".to_owned(), Some(0)),
         (Regex::new(r"^(?i)UPDATE\s+").unwrap(), ExecuteType::EXECUTE, "UPDATE".to_owned(), None),
         (Regex::new(r"^(?i)DELETE\s+").unwrap(), ExecuteType::EXECUTE, "DELETE".to_owned(), None),
         (Regex::new(r"^(?i)TRUNCATE\s+").unwrap(), ExecuteType::EXECUTE, "TRUNCATE".to_owned(), None),
-        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP\s+)?TABLE\s+").unwrap(), ExecuteType::EXECUTE, "CREATE".to_owned(), None),
+        (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP(?:ORARY)?\s+)?TABLE|VIEW|MACRO|FUNCTION|SEQUENCE\s+").unwrap(), ExecuteType::EXECUTE, "CREATE".to_owned(), None),
+        (Regex::new(r"^(?i)CREATE\s+SCHEMA\s+(IF\s+NOT\s+EXISTS)?").unwrap(), ExecuteType::EXECUTE, "CREATE".to_owned(), None),
         (Regex::new(r"^(?i)CREATE\s+(UNIQUE\s+)?INDEX\s+").unwrap(), ExecuteType::EXECUTE, "CREATE".to_owned(), None),
-        (Regex::new(r"^(?i)DROP\s+TABLE|INDEX\s+").unwrap(), ExecuteType::EXECUTE, "DROP".to_owned(), None),
-        (Regex::new(r"^(?i)ALTER\s+TABLE\s+").unwrap(), ExecuteType::EXECUTE, "ALTER".to_owned(), None),
+        (Regex::new(r"^(?i)DROP\s+TABLE|INDEX|SEQUENCE\s+").unwrap(), ExecuteType::EXECUTE, "DROP".to_owned(), None),
+        (Regex::new(r"^(?i)ALTER\s+TABLE|VIEW\s+").unwrap(), ExecuteType::EXECUTE, "ALTER".to_owned(), None),
+
+        (Regex::new(r"^(?i)BEGIN\s+TRANSACTION").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
+        (Regex::new(r"^(?i)COMMIT|ROLLBACK|ABORT").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
+
         (Regex::new(r"^(?i)DETACH|ATTACH|USE\s+").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
+        (Regex::new(r"^(?i)SET|RESET\s+").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
+
+        (Regex::new(r"^(?i)ANALYZE").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
+        (Regex::new(r"^(?i)CALL\s+").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
+        (Regex::new(r"^(?i)(FORCE\s+)?CHECKPOINT\s*").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
+        (Regex::new(r"^(?i)COMMENT\s+ON\s+").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
+        (Regex::new(r"^(?i)VACUUM").unwrap(), ExecuteType::EXECUTE, "".to_owned(), None),
 
         (Regex::new(r"^.*").unwrap(), ExecuteType::QUERY(DescribeType::DYNAMIC), "".to_owned(), None),
     ];
@@ -94,7 +115,7 @@ impl SimpleQueryHandler for FatherDuckQueryHandler {
         let query = rewrite_query(query);
 
         let match_execute_type = EXECUTE_TPYE.iter()
-                    .find(|(re, _, _, _)| re.is_match(&query));
+                    .find(|(re, _, _, _)| re.is_match(&query).unwrap());
         match match_execute_type {
             Some((re, execute_type, execute_tag, oid)) => {
                 println!("match re: {:?}", re);
@@ -103,6 +124,7 @@ impl SimpleQueryHandler for FatherDuckQueryHandler {
                         let mut stmt = conn
                             .prepare(&query)
                             .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
+                        
                         stmt.query(params![])
                             .map(|rows| {
                                 let header = Arc::new(row_desc_from_stmt(rows.as_ref().unwrap(), &Format::UnifiedText).unwrap());
@@ -212,7 +234,11 @@ fn encode_row_data(
             match data {
                 ValueRef::Null => encoder.encode_field(&None::<i8>).unwrap(),
                 ValueRef::Boolean(b) => {
-                    encoder.encode_field(&b).unwrap();
+                    if b {
+                        encoder.encode_field(&"true".to_string()).unwrap();
+                    } else {
+                        encoder.encode_field(&"false".to_string()).unwrap();
+                    }
                 }
                 ValueRef::TinyInt(i) => {
                     encoder.encode_field(&i).unwrap();
@@ -362,9 +388,10 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
         println!("ExtendedQueryHandler.do_query query: {}", query);
 
         let match_execute_type = EXECUTE_TPYE.iter()
-                    .find(|(re, _, _, _)| re.is_match(&query));
+                    .find(|(re, _, _, _)| re.is_match(&query).unwrap());
         match match_execute_type {
-            Some((_, execute_type, execute_tag, oid)) => {
+            Some((re, execute_type, execute_tag, oid)) => {
+                println!("match re: {:?}", re);
                 let mut stmt = conn
                     .prepare(query)
                     .map_err(|e| PgWireError::ApiError(Box::new(e)))?;
@@ -436,9 +463,10 @@ impl ExtendedQueryHandler for FatherDuckQueryHandler {
         let query = &portal.statement.statement;
         println!("ExtendedQueryHandler.do_describe_portal query: {}", query);
         let match_execute_type = EXECUTE_TPYE.iter()
-                    .find(|(re, _, _, _)| re.is_match(&query));
+                    .find(|(re, _, _, _)| re.is_match(&query).unwrap());
         match match_execute_type {
-            Some((_, execute_type, _, _)) => {
+            Some((re, execute_type, _, _)) => {
+                println!("match re: {:?}", re);
                 match execute_type {
                     ExecuteType::QUERY(describe_type) => {
                         match describe_type {

@@ -1,0 +1,5 @@
+VACUUM;
+
+VACUUM ANALYZE;
+
+VACUUM ANALYZE main.t1(i);

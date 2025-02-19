@@ -1,0 +1,5 @@
+CREATE VIEW v1 AS SELECT * FROM t1;
+
+ALTER VIEW v1 RENAME TO v2;
+
+select * from v2;

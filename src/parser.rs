@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use lazy_static::lazy_static;
-use regex::Regex;
+use fancy_regex::Regex;
 use derive_new::new;
 use pgwire::api::stmt::QueryParser;
 use pgwire::api::Type;
@@ -11,20 +11,23 @@ lazy_static! {
     // 定义不可变的替换规则
     static ref QUERY_REPLACEMENTS: Vec<(Regex, &'static str)> = vec![
         (Regex::new(r"(?i)'(\w+)'::regclass").unwrap(), r"(SELECT oid FROM pg_class WHERE relname = '$1')"),
+
         (Regex::new(r"^(?i)SHOW\s+TRANSACTION\s+ISOLATION\s+LEVEL").unwrap(), r"SELECT 'read committed' AS transaction_isolation"),
-        (Regex::new(r"^(?i)SHOW\s+TABLES").unwrap(), r"SELECT table_name as name FROM information_schema.tables WHERE table_schema = current_schema()"),
-        (Regex::new(r"^(?i)SHOW\s+(\w+)").unwrap(), r"SELECT current_setting('$1') AS $1"),
-        (Regex::new(r"^(?i)SET\s+(\w+)\s+=\s+(.*)").unwrap(), r"SET $1 = '$2'"),
+        (Regex::new(r"^(?i)SHOW\s+(?!(DATABASES|TABLES)\b)(\w+)").unwrap(), r"SELECT current_setting('$1') AS $1"),
+
+        (Regex::new(r"^(?i)SET\s+(\w+)\s+=\s+(^(?!\d+$)\w+)").unwrap(), r"SET $1 = '$2'"),
+
+        (Regex::new(r"^(?i)CALL\s+(\w+)").unwrap(), r"SELECT * FROM $1"),
+
     ];
 }
 
 pub fn rewrite_query(sql: &str) -> String {
-    // println!("rewrite query");
     let trim_sql = sql.trim();
     let result = QUERY_REPLACEMENTS.iter().fold(trim_sql.to_string(), |acc, (re, replacement)| {
         re.replace_all(&acc, *replacement).to_string()
     });
-    if sql != result {
+    if trim_sql != result {
         println!("rewrite_query:\nbefore:\n{}\nafter:\n{}", sql, result);
     }
     result
