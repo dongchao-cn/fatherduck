@@ -71,6 +71,8 @@ lazy_static! {
         (Regex::new(r"^(?i)ALTER|DROP\s+TABLE\s+").unwrap(), ExecuteType::EXECUTE),
         (Regex::new(r"^(?i)DETACH|ATTACH|USE\s+").unwrap(), ExecuteType::EXECUTE),
 
+        (Regex::new(r"^.*").unwrap(), ExecuteType::QUERY(DescribeType::DYNAMIC)),
+
     ];
 }
 
@@ -115,10 +117,10 @@ impl SimpleQueryHandler for FatherDuckQueryHandler {
                     break;
                 }
             };
-            res.unwrap()
+            res
         });
         match result {
-            Ok(res) => Ok(res),
+            Ok(res) => res,
             Err(_) => Err(PgWireError::ApiError(Box::new(
                 UnknownError::UnknownError(format!("Server thread panicked")),
             ))),

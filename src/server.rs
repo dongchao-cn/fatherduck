@@ -59,6 +59,7 @@ fn get_connection() -> Arc<Mutex<Connection>> {
     }
     conn
 }
+
 pub async fn start_server() {
     let server_addr = format!("{}:{}", &FATHERDUCK_CONFIG.host, &FATHERDUCK_CONFIG.port);
     let listener = TcpListener::bind(&server_addr).await.unwrap();
