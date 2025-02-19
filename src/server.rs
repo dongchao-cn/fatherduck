@@ -1,4 +1,4 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use pgwire::api::auth::md5pass::Md5PasswordAuthStartupHandler;
 use pgwire::api::auth::DefaultServerParameterProvider;
@@ -10,6 +10,7 @@ use duckdb::Connection;
 
 use crate::auth::FatherDuckAuthSource;
 use crate::query::FatherDuckQueryHandler;
+use crate::connection::MyConnection;
 use crate::error::FatherDuckErrorHandler;
 use crate::config::{FATHERDUCK_CONFIG, MEMORY_PATH};
 
@@ -50,12 +51,12 @@ impl PgWireServerHandlers for DuckDBBackendFactory {
     }
 }
 
-fn get_connection() -> Arc<Mutex<Connection>> {
+fn new_connection() -> MyConnection {
     let conn;
     if FATHERDUCK_CONFIG.path == MEMORY_PATH {
-        conn = Arc::new(Mutex::new(Connection::open_in_memory().unwrap()));
+        conn = MyConnection::new(Connection::open_in_memory().unwrap());
     } else {
-        conn = Arc::new(Mutex::new(Connection::open(&FATHERDUCK_CONFIG.path).unwrap()));
+        conn = MyConnection::new(Connection::open(&FATHERDUCK_CONFIG.path).unwrap());
     }
     conn
 }
@@ -68,7 +69,7 @@ pub async fn start_server() {
         let incoming_socket = listener.accept().await.unwrap();
 
         let factory = DuckDBBackendFactory {
-            query_handler: Arc::new(FatherDuckQueryHandler::new(get_connection())),
+            query_handler: Arc::new(FatherDuckQueryHandler::new(new_connection())),
             error_handler: Arc::new(FatherDuckErrorHandler::new()),
         };
 

@@ -1,3 +1,4 @@
+mod connection;
 mod server;
 mod auth;
 mod query;
