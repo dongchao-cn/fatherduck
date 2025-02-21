@@ -13,7 +13,7 @@ lazy_static! {
         (Regex::new(r"(?i)'(\w+)'::regclass").unwrap(), r"(SELECT oid FROM pg_class WHERE relname = '$1')"),
 
         (Regex::new(r"^(?i)SHOW\s+TRANSACTION\s+ISOLATION\s+LEVEL").unwrap(), r"SELECT 'read committed' AS transaction_isolation"),
-        (Regex::new(r"^(?i)SHOW\s+(?!(DATABASES|TABLES)\b)(\w+)").unwrap(), r"SELECT current_setting('$1') AS $1"),
+        (Regex::new(r"^(?i)SHOW\s+(?!(DATABASES|TABLES)\b)(\w+)").unwrap(), r"SELECT current_setting('$2') AS $2"),
 
         (Regex::new(r"^(?i)SET\s+(\w+)\s+=\s+(^(?!\d+$)\w+)").unwrap(), r"SET $1 = '$2'"),
 

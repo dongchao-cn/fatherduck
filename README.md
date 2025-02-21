@@ -11,7 +11,11 @@ unzip libduckdb.zip -d ./
 - [X] psql
 - [X] dbeaver
 
-## 语法适配
+## 类型
+https://duckdb.org/docs/sql/data_types/overview
+- [ ] [General-Purpose Data Types](tests/general_type.sql)
+
+## 语法
 - [X] [ANALYZE](tests/analyze.sql)
 - [X] [ALTER TABLE](tests/alter_table.sql)
 - [X] [ALTER VIEW](tests/alter_view.sql)
@@ -27,7 +31,7 @@ unzip libduckdb.zip -d ./
 - [X] [CREATE SEQUENCE](tests/create_sequence.sql)
 - [X] [CREATE TABLE](tests/create_table.sql)
 - [X] [CREATE VIEW](tests/create_view.sql)
-- [ ] CREATE TYPE
+- [ ] [CREATE TYPE](tests/create_type.sql)
 - [X] [DELETE](tests/delete.sql)
 - [X] [DESCRIBE](tests/describe.sql)
 - [X] [DROP](tests/drop.sql)

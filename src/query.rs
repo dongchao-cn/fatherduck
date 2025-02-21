@@ -81,6 +81,8 @@ lazy_static! {
         (Regex::new(r"^(?i)CREATE\s+(OR\s+REPLACE\s+)?(TEMP(?:ORARY)?\s+)?TABLE|VIEW|MACRO|FUNCTION|SEQUENCE\s+").unwrap(), ExecuteType::EXECUTE, "CREATE".to_owned(), None),
         (Regex::new(r"^(?i)CREATE\s+SCHEMA\s+(IF\s+NOT\s+EXISTS)?").unwrap(), ExecuteType::EXECUTE, "CREATE".to_owned(), None),
         (Regex::new(r"^(?i)CREATE\s+(UNIQUE\s+)?INDEX\s+").unwrap(), ExecuteType::EXECUTE, "CREATE".to_owned(), None),
+        (Regex::new(r"^(?i)CREATE\s+TYPE\s+").unwrap(), ExecuteType::EXECUTE, "CREATE".to_owned(), None),
+
         (Regex::new(r"^(?i)DROP\s+TABLE|INDEX|SEQUENCE\s+").unwrap(), ExecuteType::EXECUTE, "DROP".to_owned(), None),
         (Regex::new(r"^(?i)ALTER\s+TABLE|VIEW\s+").unwrap(), ExecuteType::EXECUTE, "ALTER".to_owned(), None),
 
@@ -207,7 +209,8 @@ fn row_desc_from_stmt(stmt: &Statement, format: &Format) -> PgWireResult<Vec<Fie
         .map(|idx| {
             let datatype = stmt.column_type(idx);
             let name = stmt.column_name(idx).unwrap();
-
+            println!("datatype: {}", datatype);
+            println!("into_pg_type(&datatype).unwrap(): {}", into_pg_type(&datatype).unwrap());
             Ok(FieldInfo::new(
                 name.clone(),
                 None,
@@ -229,16 +232,17 @@ fn encode_row_data(
     let ncols = schema.len();
     while let Ok(Some(row)) = rows.next() {
         let mut encoder = DataRowEncoder::new(schema.clone());
-        for idx in 0..ncols {
+        for idx in 0..ncols {            
             let data = row.get_ref_unwrap::<usize>(idx);
             match data {
                 ValueRef::Null => encoder.encode_field(&None::<i8>).unwrap(),
                 ValueRef::Boolean(b) => {
-                    if b {
-                        encoder.encode_field(&"true".to_string()).unwrap();
-                    } else {
-                        encoder.encode_field(&"false".to_string()).unwrap();
-                    }
+                    // if b {
+                    //     encoder.encode_field(&"true".to_string()).unwrap();
+                    // } else {
+                    //     encoder.encode_field(&"false".to_string()).unwrap();
+                    // }
+                    encoder.encode_field(&b).unwrap();
                 }
                 ValueRef::TinyInt(i) => {
                     encoder.encode_field(&i).unwrap();
@@ -270,7 +274,12 @@ fn encode_row_data(
                     encoder
                         .encode_field(&(BASE_DATE + Duration::days(d as i64)).format("%Y-%m-%d").to_string())
                         .unwrap();
-                }
+                },
+                // ValueRef::Enum(e, _) => {
+                //     encoder.encode_field(&e).unwrap();
+                //     // (enum_type, row)
+                // }
+
                 other => {
                     unimplemented!("type {:?} not supported.", other)
                 }
@@ -328,7 +337,7 @@ fn get_params(portal: &Portal<String>) -> Vec<Box<dyn ToSql>> {
 
 fn into_arrow_type(df_type: &str) -> PgWireResult<DataType> {
     Ok(match df_type {
-        "BIGINT" => DataType::Int64,
+        "BIGINT" | "INT8" | "LONG" => DataType::Int64,
         "BLOB" => DataType::Binary,
         "BOOLEAN" => DataType::Boolean,
         "DATE" => DataType::Date32,
