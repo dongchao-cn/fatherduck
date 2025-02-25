@@ -16,7 +16,7 @@ done
 killall -q fatherduck || true
 cargo build
 echo "启动 cargo run"
-../target/debug/fatherduck &
+LD_LIBRARY_PATH=../libduckdb ../target/debug/fatherduck &
 CARGO_PID=$!
 echo "CARGO_PID: $CARGO_PID"
 
