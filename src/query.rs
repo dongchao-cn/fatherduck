@@ -171,6 +171,7 @@ fn into_pg_type(df_type: &DataType) -> PgWireResult<Type> {
         DataType::Float32 => Type::FLOAT4,
         DataType::Float64 => Type::FLOAT8,
         DataType::Utf8 => Type::VARCHAR,
+        DataType::Decimal128(_, _) => Type::NUMERIC,
         DataType::List(field) => match field.data_type() {
             DataType::Boolean => Type::BOOL_ARRAY,
             DataType::Int8 | DataType::UInt8 => Type::CHAR_ARRAY,
@@ -237,12 +238,12 @@ fn encode_row_data(
             match data {
                 ValueRef::Null => encoder.encode_field(&None::<i8>).unwrap(),
                 ValueRef::Boolean(b) => {
-                    // if b {
-                    //     encoder.encode_field(&"true".to_string()).unwrap();
-                    // } else {
-                    //     encoder.encode_field(&"false".to_string()).unwrap();
-                    // }
-                    encoder.encode_field(&b).unwrap();
+                    if b {
+                        encoder.encode_field(&"true".to_string()).unwrap();
+                    } else {
+                        encoder.encode_field(&"false".to_string()).unwrap();
+                    }
+                    // encoder.encode_field(&b).unwrap();
                 }
                 ValueRef::TinyInt(i) => {
                     encoder.encode_field(&i).unwrap();
@@ -274,6 +275,9 @@ fn encode_row_data(
                     encoder
                         .encode_field(&(BASE_DATE + Duration::days(d as i64)).format("%Y-%m-%d").to_string())
                         .unwrap();
+                },
+                ValueRef::Decimal(d) => {
+                    encoder.encode_field(&d).unwrap();
                 },
                 // ValueRef::Enum(e, _) => {
                 //     encoder.encode_field(&e).unwrap();
@@ -336,7 +340,9 @@ fn get_params(portal: &Portal<String>) -> Vec<Box<dyn ToSql>> {
 }
 
 fn into_arrow_type(df_type: &str) -> PgWireResult<DataType> {
-    Ok(match df_type {
+    let part: Vec<&str> = df_type.split("(").collect();
+    let first_part = part[0];
+    Ok(match first_part {
         "BIGINT" | "INT8" | "LONG" => DataType::Int64,
         "BLOB" => DataType::Binary,
         "BOOLEAN" => DataType::Boolean,
@@ -347,6 +353,16 @@ fn into_arrow_type(df_type: &str) -> PgWireResult<DataType> {
         "SMALLINT" => DataType::Int16,
         "TINYINT" => DataType::Int8,
         "VARCHAR" => DataType::Utf8,
+        "DECIMAL" | "NUMERIC" => {
+            let re = Regex::new(r"DECIMAL\((\d+),(\d+)\)").unwrap();
+            if let Ok(Some(caps)) = re.captures(df_type) {
+                let prec: u8 = caps[1].parse().unwrap();
+                let scale: i8 = caps[2].parse().unwrap();
+                DataType::Decimal128(prec, scale)
+            } else {
+                panic!("type DECIMAL err: {}", df_type)
+            }
+        }
         _ => {
             return Err(PgWireError::UserError(Box::new(ErrorInfo::new(
                 "ERROR".to_owned(),

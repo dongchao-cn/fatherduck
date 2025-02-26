@@ -14,6 +14,30 @@ unzip libduckdb.zip -d ./
 ## 类型
 https://duckdb.org/docs/sql/data_types/overview
 - [ ] [General-Purpose Data Types](tests/general_type.sql)
+    - [X] BIGINT, INT8, LONG
+    - [ ] BIT, BITSTRING
+    - [X] BLOB, BYTEA, BINARY, VARBINARY
+    - [X] BOOLEAN, BOOL, LOGICAL
+    - [X] DATE
+    - [X] DECIMAL(prec, scale), NUMERIC(prec, scale)
+    - [ ] DOUBLE, FLOAT8
+    - [ ] FLOAT, FLOAT4, REAL
+    - [ ] HUGEINT
+    - [X] INTEGER, INT4, INT, SIGNED
+    - [ ] INTERVAL
+    - [ ] JSON
+    - [ ] SMALLINT, INT2, SHORT
+    - [ ] TIME
+    - [ ] TIMESTAMP WITH TIME ZONE, TIMESTAMPTZ
+    - [ ] TIMESTAMP, DATETIME
+    - [ ] TINYINT, INT1
+    - [ ] UBIGINT
+    - [ ] UHUGEINT
+    - [ ] UINTEGER
+    - [ ] USMALLINT
+    - [ ] UTINYINT
+    - [ ] UUID
+    - [ ] VARCHAR, CHAR, BPCHAR, TEXT, STRING
 
 ## 语法
 - [X] [ANALYZE](tests/analyze.sql)
