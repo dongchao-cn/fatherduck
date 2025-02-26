@@ -20,24 +20,31 @@ https://duckdb.org/docs/sql/data_types/overview
     - [X] BOOLEAN, BOOL, LOGICAL
     - [X] DATE
     - [X] DECIMAL(prec, scale), NUMERIC(prec, scale)
-    - [ ] DOUBLE, FLOAT8
-    - [ ] FLOAT, FLOAT4, REAL
+    - [X] DOUBLE, FLOAT8
+    - [X] FLOAT, FLOAT4, REAL
     - [ ] HUGEINT
     - [X] INTEGER, INT4, INT, SIGNED
-    - [ ] INTERVAL
+    - [X] INTERVAL
     - [ ] JSON
-    - [ ] SMALLINT, INT2, SHORT
-    - [ ] TIME
+    - [X] SMALLINT, INT2, SHORT
+    - [X] TIME
     - [ ] TIMESTAMP WITH TIME ZONE, TIMESTAMPTZ
-    - [ ] TIMESTAMP, DATETIME
-    - [ ] TINYINT, INT1
+    - [X] TIMESTAMP, DATETIME
+    - [X] TINYINT, INT1
     - [ ] UBIGINT
     - [ ] UHUGEINT
-    - [ ] UINTEGER
+    - [X] UINTEGER
     - [ ] USMALLINT
     - [ ] UTINYINT
-    - [ ] UUID
-    - [ ] VARCHAR, CHAR, BPCHAR, TEXT, STRING
+    - [X] UUID
+    - [X] VARCHAR, CHAR, BPCHAR, TEXT, STRING
+- [ ] [Nested / Composite Types](tests/nested_type.sql)
+    - [ ] ARRAY
+    - [ ] LIST
+    - [ ] MAP
+    - [ ] STRUCT
+    - [ ] UNION
+
 
 ## 语法
 - [X] [ANALYZE](tests/analyze.sql)
@@ -76,35 +83,6 @@ https://duckdb.org/docs/sql/data_types/overview
 
 ## 测试
 ```
-show databases;
-select 1;
-
 PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name
 PGPASSWORD='fatherduck' psql -h 127.0.0.1 -p 5432 -U fatherduck -d database_name -c "SELECT 1;"
-
-
-CREATE TABLE weather (
-    city    VARCHAR,
-    temp_lo INTEGER, -- minimum temperature on a day
-    temp_hi INTEGER, -- maximum temperature on a day
-    prcp    FLOAT,
-    date    DATE
-);
-INSERT INTO weather
-VALUES ('San Francisco', 46, 50, 0.25, '1994-11-27');
-INSERT INTO weather (city, temp_lo, temp_hi, prcp, date)
-VALUES ('San Francisco', 43, 57, 0.0, '1994-11-29');
-select * from weather;
-delete from weather where date = '1994-11-29';
-
-SELECT * FROM generate_series(5);
-
--- 准备参数化查询
-PREPARE my_query AS SELECT * FROM weather WHERE temp_lo = ?;
-
--- 执行查询并传递参数
-EXECUTE my_query(46);
-
--- 释放资源
-DEALLOCATE my_query;
 ```

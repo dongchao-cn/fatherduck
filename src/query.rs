@@ -3,7 +3,8 @@ use std::sync::Arc;
 use std::vec;
 
 use async_trait::async_trait;
-use duckdb::arrow::datatypes::DataType;
+use duckdb::arrow::array::PrimitiveArray;
+use duckdb::arrow::datatypes::{DataType, TimeUnit};
 use duckdb::{params, Rows};
 use duckdb::{types::ValueRef, Statement, ToSql};
 
@@ -18,7 +19,7 @@ use pgwire::api::stmt::StoredStatement;
 use pgwire::api::{ClientInfo, Type};
 use pgwire::error::{ErrorInfo, PgWireError, PgWireResult};
 use pgwire::messages::data::DataRow;
-use chrono::{NaiveDate, Duration};
+use chrono::{NaiveDate, NaiveTime, DateTime, Duration};
 use lazy_static::lazy_static;
 use fancy_regex::Regex;
 
@@ -171,7 +172,29 @@ fn into_pg_type(df_type: &DataType) -> PgWireResult<Type> {
         DataType::Float32 => Type::FLOAT4,
         DataType::Float64 => Type::FLOAT8,
         DataType::Utf8 => Type::VARCHAR,
+        DataType::Interval(_) => Type::INTERVAL,
         DataType::Decimal128(_, _) => Type::NUMERIC,
+        DataType::FixedSizeList(field, _) => match field.data_type() {
+            DataType::Boolean => Type::BOOL_ARRAY,
+            DataType::Int8 | DataType::UInt8 => Type::CHAR_ARRAY,
+            DataType::Int16 | DataType::UInt16 => Type::INT2_ARRAY,
+            DataType::Int32 | DataType::UInt32 => Type::INT4_ARRAY,
+            DataType::Int64 | DataType::UInt64 => Type::INT8_ARRAY,
+            DataType::Timestamp(_, _) => Type::TIMESTAMP_ARRAY,
+            DataType::Time32(_) | DataType::Time64(_) => Type::TIME_ARRAY,
+            DataType::Date32 | DataType::Date64 => Type::DATE_ARRAY,
+            DataType::Binary => Type::BYTEA_ARRAY,
+            DataType::Float32 => Type::FLOAT4_ARRAY,
+            DataType::Float64 => Type::FLOAT8_ARRAY,
+            DataType::Utf8 => Type::VARCHAR_ARRAY,
+            list_type => {
+                return Err(PgWireError::UserError(Box::new(ErrorInfo::new(
+                    "ERROR".to_owned(),
+                    "XX000".to_owned(),
+                    format!("Unsupported List Datatype {list_type}"),
+                ))));
+            }
+        }
         DataType::List(field) => match field.data_type() {
             DataType::Boolean => Type::BOOL_ARRAY,
             DataType::Int8 | DataType::UInt8 => Type::CHAR_ARRAY,
@@ -257,6 +280,12 @@ fn encode_row_data(
                 ValueRef::BigInt(i) => {
                     encoder.encode_field(&i).unwrap();
                 }
+                ValueRef::UInt(i) => {
+                    encoder.encode_field(&i).unwrap();
+                }
+                // ValueRef::HugeInt(i) => {
+                //     encoder.encode_field(&i).unwrap();
+                // }
                 ValueRef::Float(f) => {
                     encoder.encode_field(&f).unwrap();
                 }
@@ -273,12 +302,57 @@ fn encode_row_data(
                 }
                 ValueRef::Date32(d) => {
                     encoder
-                        .encode_field(&(BASE_DATE + Duration::days(d as i64)).format("%Y-%m-%d").to_string())
+                        .encode_field(&(BASE_DATE + Duration::days(d as i64)))
                         .unwrap();
                 },
+                ValueRef::Time64(timeunit, v) => {
+                    match timeunit {
+                        duckdb::types::TimeUnit::Microsecond => {
+                            let seconds = v / 1_000_000;
+                            let microseconds = (v % 1_000_000) as u32;
+                            let time = NaiveTime::from_num_seconds_from_midnight_opt(seconds as u32, microseconds * 1_000).unwrap();
+                            // time.format("%H:%M:%S%.6f").to_string()
+                            encoder.encode_field(&time).unwrap();
+                        },
+                        _ => {
+                            unimplemented!("timeunit {:?} not supported.", timeunit)
+                        }
+                    }
+                }
+                ValueRef::Timestamp(timeunit, v) => {
+                    match timeunit {
+                        duckdb::types::TimeUnit::Microsecond => {
+                            let seconds = v / 1_000_000;
+                            let microseconds = (v % 1_000_000) as u32;
+                            let datetime = DateTime::from_timestamp(seconds, microseconds * 1_000).unwrap();
+                            encoder.encode_field(&datetime).unwrap();
+                        },
+                        _ => {
+                            unimplemented!("timeunit {:?} not supported.", timeunit)
+                        }
+                    }
+                }
                 ValueRef::Decimal(d) => {
                     encoder.encode_field(&d).unwrap();
                 },
+                // ValueRef::List(list_type, u) => {
+                //     match list_type {
+                //         duckdb::types::ListType::Regular(generic_list_array) => {
+                //             let a= generic_list_array
+                //                 .value(0)
+                                
+                //             encoder.encode_field(&a).unwrap();
+
+                //         },
+                //         _ => {
+                //             unimplemented!("list_type {:?} not supported.", list_type)
+                //         }
+                //     }
+                //     encoder.encode_field(&list_type).unwrap();
+                // },
+                // ValueRef::Interval { months, days, nanos } => {
+                //     encoder.encode_field(&format!("{} months {} days {} nanos", months, days, nanos)).unwrap();
+                // }
                 // ValueRef::Enum(e, _) => {
                 //     encoder.encode_field(&e).unwrap();
                 //     // (enum_type, row)
@@ -352,7 +426,12 @@ fn into_arrow_type(df_type: &str) -> PgWireResult<DataType> {
         "INTEGER" => DataType::Int32,
         "SMALLINT" => DataType::Int16,
         "TINYINT" => DataType::Int8,
+        "HUGEINT" => DataType::Int64,
+        "UINTEGER" => DataType::UInt32,
         "VARCHAR" => DataType::Utf8,
+        "TIME" => DataType::Time64(TimeUnit::Microsecond),
+        "TIMESTAMP" => DataType::Timestamp(TimeUnit::Microsecond, None),
+        "UUID" => DataType::Utf8,
         "DECIMAL" | "NUMERIC" => {
             let re = Regex::new(r"DECIMAL\((\d+),(\d+)\)").unwrap();
             if let Ok(Some(caps)) = re.captures(df_type) {
